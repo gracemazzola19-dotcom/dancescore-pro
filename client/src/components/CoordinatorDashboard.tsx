@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
+import QRCode from 'qrcode';
 
 interface AttendanceEvent {
   id: string;
@@ -66,6 +67,8 @@ const CoordinatorDashboard: React.FC = () => {
   const [absenceRequests, setAbsenceRequests] = useState<AbsenceRequest[]>([]);
   const [makeUpSubmissions, setMakeUpSubmissions] = useState<MakeUpSubmission[]>([]);
   const [activeTab, setActiveTab] = useState<'attendance' | 'absences' | 'makeups'>('attendance');
+  const [qrCodes, setQrCodes] = useState<{ [eventId: string]: string }>({});
+  const [expandedQR, setExpandedQR] = useState<{ [eventId: string]: boolean }>({});
 
   // Get coordinator's level from user info
   // Assume coordinators are named like "Level 1 Coordinator" or similar
@@ -74,6 +77,12 @@ const CoordinatorDashboard: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (events.length > 0) {
+      generateAllQRCodes();
+    }
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'absences') {
@@ -170,6 +179,33 @@ const CoordinatorDashboard: React.FC = () => {
     return record?.points || 0;
   };
 
+  const generateQRCode = async (eventId: string) => {
+    try {
+      const qrUrl = `${window.location.origin}/attendance/${eventId}`;
+      const qrCodeDataURL = await QRCode.toDataURL(qrUrl, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      setQrCodes(prev => ({ ...prev, [eventId]: qrCodeDataURL }));
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+
+  const generateAllQRCodes = async () => {
+    for (const event of events) {
+      await generateQRCode(event.id);
+    }
+  };
+
+  const toggleQR = (eventId: string) => {
+    setExpandedQR(prev => ({ ...prev, [eventId]: !prev[eventId] }));
+  };
+
   if (loading) {
     return (
       <div className="admin-container">
@@ -259,6 +295,45 @@ const CoordinatorDashboard: React.FC = () => {
                               <small style={{ fontSize: '0.8rem', color: '#666' }}>
                                 {formatDate(event.date)}
                               </small>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleQR(event.id);
+                                }}
+                                style={{
+                                  backgroundColor: 'transparent',
+                                  border: '1px solid #667eea',
+                                  color: '#667eea',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  marginTop: '0.25rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                {expandedQR[event.id] ? 'Hide QR' : 'Show QR'}
+                              </button>
+                              {expandedQR[event.id] && qrCodes[event.id] && (
+                                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                                  <img 
+                                    src={qrCodes[event.id]} 
+                                    alt={`QR Code for ${event.name}`}
+                                    style={{ 
+                                      maxWidth: '100px', 
+                                      height: 'auto',
+                                      border: '1px solid #ddd',
+                                      borderRadius: '0.25rem'
+                                    }}
+                                  />
+                                  <small style={{ fontSize: '0.65rem', color: '#666' }}>
+                                    Scan for attendance
+                                  </small>
+                                </div>
+                              )}
                             </div>
                           </th>
                         ))}
