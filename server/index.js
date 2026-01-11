@@ -5324,24 +5324,31 @@ app.get('/api/export/qr-code-pdf', authenticateToken, async (req, res) => {
     }
     
     // Get the registration URL from environment or construct it
-    // Priority: CLIENT_URL env var > req.headers.origin > localhost (dev only)
-    const baseUrl = process.env.CLIENT_URL || 
-                    process.env.FRONTEND_URL || 
-                    req.headers.origin || 
-                    (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000');
+    // Priority: CLIENT_URL env var > FRONTEND_URL env var > req.headers.origin > construct from request > localhost (dev only)
+    let baseUrl = process.env.CLIENT_URL || process.env.FRONTEND_URL;
     
-    // If baseUrl is empty in production, construct from request
-    let finalBaseUrl = baseUrl;
-    if (!finalBaseUrl && process.env.NODE_ENV === 'production') {
-      // In production, construct from request protocol and host
-      const protocol = req.protocol || 'https';
-      const host = req.get('host') || '';
-      finalBaseUrl = `${protocol}://${host}`;
+    if (!baseUrl) {
+      // Try to get from request origin
+      baseUrl = req.headers.origin;
+      
+      // If still no baseUrl, construct from request
+      if (!baseUrl) {
+        const protocol = req.protocol || (req.secure ? 'https' : 'http');
+        const host = req.get('host');
+        if (host) {
+          baseUrl = `${protocol}://${host}`;
+        }
+      }
+    }
+    
+    // Fallback to localhost only in development
+    if (!baseUrl) {
+      baseUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
     }
     
     const registrationUrl = auditionId 
-      ? `${finalBaseUrl}/register/${auditionId}`
-      : `${finalBaseUrl}/register`;
+      ? `${baseUrl}/register/${auditionId}`
+      : `${baseUrl}/register`;
     
     console.log(`Generating QR code PDF for club ${clubId}:`, registrationUrl);
     
