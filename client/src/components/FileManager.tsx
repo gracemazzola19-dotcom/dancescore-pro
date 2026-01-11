@@ -294,6 +294,8 @@ const FileManager: React.FC = () => {
                     }}>
                       {file.type === 'video' 
                         ? formatDate(file.recordedAt || file.createdAt)
+                        : file.type === 'archived'
+                        ? formatDate(file.archivedAt || file.createdAt)
                         : formatDate(file.createdAt)}
                     </div>
                   </div>

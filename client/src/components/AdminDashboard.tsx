@@ -614,19 +614,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleAuditionStatusChange = async (auditionId: string, status: string) => {
-    try {
-      await api.put(`/api/auditions/${auditionId}/status`, { status });
-      setAuditions(prev => 
-        prev.map(a => a.id === auditionId ? { ...a, status: status as any } : a)
-      );
-      toast.success(`Audition status updated to ${status}`);
-      fetchAuditions(); // Refresh to ensure only one active
-    } catch (error) {
-      toast.error('Failed to update audition status');
-    }
-  };
-
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'Level 1': return '#ffb3d1'; // Pastel pink
