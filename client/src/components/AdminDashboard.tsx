@@ -715,6 +715,7 @@ const AdminDashboard: React.FC = () => {
           { key: 'attendance', label: customTexts.attendanceSheetTitle },
           { key: 'absenceRequests', label: customTexts.absenceRequestsTabLabel },
           { key: 'makeUpSubmissions', label: customTexts.makeUpSubmissionsTabLabel },
+          { key: 'files', label: 'Files' },
           { key: 'settings', label: 'Settings' }
         ].map(tab => (
           <button
