@@ -363,7 +363,7 @@ const Login: React.FC = () => {
         ) : showForgotPassword ? (
           // Step 2.6: Forgot Password
           <ForgotPassword
-            userType={selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
+            userType={selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
             clubId={tempUserData?.user?.clubId || clubId}
             onBack={() => {
               setShowForgotPassword(false);
@@ -380,7 +380,7 @@ const Login: React.FC = () => {
           // Step 2.7: Password Change (First Login)
           <PasswordChange
             email={email}
-            userType={selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
+            userType={selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
             currentPassword={password}
             clubId={tempUserData?.user?.clubId || clubId}
             onPasswordChanged={handlePasswordChangeComplete}
@@ -396,7 +396,7 @@ const Login: React.FC = () => {
           <VerificationCode
             email={email}
             password={password}
-            userType={selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
+            userType={selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
             clubId={tempUserData?.user?.clubId || clubId}
             onVerified={handleVerificationComplete}
             onCancel={() => {
