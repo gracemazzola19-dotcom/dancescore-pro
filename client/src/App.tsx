@@ -56,8 +56,11 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode; role: s
   }
   
   if (!user) {
+    console.log('ProtectedRoute: No user, redirecting to login');
     return <Navigate to={role === 'dancer' ? '/dancer-login' : '/login'} />;
   }
+  
+  console.log('ProtectedRoute check:', { routeRole: role, userRole: user.role, user });
   
   // Allow secretary to access admin routes
   const isAdminRoute = role === 'admin';
@@ -65,9 +68,21 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode; role: s
   
   if (isAdminRoute && canAccessAdmin) {
     // Secretary and admin can access admin routes
+    console.log('ProtectedRoute: Allowing admin access');
     return <>{children}</>;
   }
   
+  // Allow admin, judge, eboard, and secretary roles to access judge routes
+  const isJudgeRoute = role === 'judge';
+  const canAccessJudge = user.role === 'judge' || user.role === 'eboard' || user.role === 'admin' || user.role === 'secretary';
+  
+  if (isJudgeRoute && canAccessJudge) {
+    // Judge, eboard, admin, and secretary can access judge routes
+    console.log('ProtectedRoute: Allowing judge access');
+    return <>{children}</>;
+  }
+  
+  console.log('ProtectedRoute: Role mismatch, redirecting. Expected:', role, 'Got:', user.role);
   if (user.role !== role) {
     if (role === 'dancer') return <Navigate to="/dancer-login" />;
     if (role === 'coordinator') return <Navigate to="/login" />;
