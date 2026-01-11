@@ -201,39 +201,73 @@ const JudgeDashboard: React.FC = () => {
 
   const fetchSubmissionStatus = async (dancers: Dancer[]) => {
     try {
-      const statusPromises = dancers.map(async (dancer) => {
-        try {
-          const response = await api.get(`/api/scores/submission-status/${dancer.id}`);
-          return { dancerId: dancer.id, ...response.data };
-        } catch (error) {
-          console.error(`Error fetching submission status for dancer ${dancer.id}:`, error);
-          return { dancerId: dancer.id, submitted: false, hasScores: false };
-        }
-      });
+      // OPTIMIZATION: Use batch endpoint instead of individual requests
+      const dancerIds = dancers.map(d => d.id);
       
-      const statuses = await Promise.all(statusPromises);
-      const statusMap: Record<string, { submitted: boolean; hasScores: boolean }> = {};
+      if (dancerIds.length === 0) {
+        return;
+      }
       
-      statuses.forEach(status => {
-        statusMap[status.dancerId] = {
-          submitted: status.submitted,
-          hasScores: status.hasScores
-        };
+      try {
+        const response = await api.post('/api/scores/submission-status/batch', { dancerIds });
+        const statusMap: Record<string, { submitted: boolean; hasScores: boolean }> = {};
         
-        // Only load scores if they exist and we don't already have local changes
-        if (status.hasScores && status.scores && !scores[status.dancerId]) {
-          setScores(prev => ({
-            ...prev,
-            [status.dancerId]: {
-              dancerId: status.dancerId,
-              scores: status.scores,
-              comments: status.comments || ''
-            }
-          }));
-        }
-      });
-      
-      setSubmissionStatus(statusMap);
+        Object.entries(response.data).forEach(([dancerId, status]: [string, any]) => {
+          statusMap[dancerId] = {
+            submitted: status.submitted,
+            hasScores: status.hasScores
+          };
+          
+          // Only load scores if they exist and we don't already have local changes
+          if (status.hasScores && status.scores && !scores[dancerId]) {
+            setScores(prev => ({
+              ...prev,
+              [dancerId]: {
+                dancerId: dancerId,
+                scores: status.scores,
+                comments: status.comments || ''
+              }
+            }));
+          }
+        });
+        
+        setSubmissionStatus(statusMap);
+      } catch (batchError) {
+        // Fallback to individual requests if batch endpoint fails
+        console.warn('Batch submission status failed, falling back to individual requests:', batchError);
+        const statusPromises = dancers.map(async (dancer) => {
+          try {
+            const response = await api.get(`/api/scores/submission-status/${dancer.id}`);
+            return { dancerId: dancer.id, ...response.data };
+          } catch (error) {
+            console.error(`Error fetching submission status for dancer ${dancer.id}:`, error);
+            return { dancerId: dancer.id, submitted: false, hasScores: false };
+          }
+        });
+        
+        const statuses = await Promise.all(statusPromises);
+        const statusMap: Record<string, { submitted: boolean; hasScores: boolean }> = {};
+        
+        statuses.forEach(status => {
+          statusMap[status.dancerId] = {
+            submitted: status.submitted,
+            hasScores: status.hasScores
+          };
+          
+          if (status.hasScores && status.scores && !scores[status.dancerId]) {
+            setScores(prev => ({
+              ...prev,
+              [status.dancerId]: {
+                dancerId: status.dancerId,
+                scores: status.scores,
+                comments: status.comments || ''
+              }
+            }));
+          }
+        });
+        
+        setSubmissionStatus(statusMap);
+      }
     } catch (error) {
       console.error('Error fetching submission status:', error);
     }

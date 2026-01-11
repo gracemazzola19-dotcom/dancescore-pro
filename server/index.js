@@ -10,11 +10,15 @@ const jwt = require('jsonwebtoken');
 const QRCode = require('qrcode');
 const admin = require('firebase-admin');
 const emailService = require('./email-service');
+const NodeCache = require('node-cache');
 
 dotenv.config();
 
 // Initialize email service on server start
 emailService.initializeEmailService();
+
+// Initialize cache for API responses (TTL: 30 seconds)
+const cache = new NodeCache({ stdTTL: 30, checkperiod: 60, useClones: false });
 
 const app = express();
 const PORT = process.env.PORT || 5001; // Match client proxy configuration
@@ -591,11 +595,19 @@ app.get('/api/auditions/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Get dancers for a specific audition
+// Get dancers for a specific audition (OPTIMIZED: batch fetch scores + caching)
 app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const clubId = getClubId(req);
+    
+    // Check cache first (key includes clubId for multi-tenant safety)
+    const cacheKey = `dancers_${clubId}_${id}`;
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      console.log(`Cache hit for dancers ${id} (club ${clubId})`);
+      return res.json(cachedData);
+    }
     
     // Check if audition exists and belongs to user's club
     const auditionDoc = await db.collection('auditions').doc(id).get();
@@ -615,24 +627,56 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
       .where('auditionId', '==', id)
       .get();
     
+    // OPTIMIZATION: Batch fetch all scores for all dancers at once
+    const dancerIds = dancersSnapshot.docs.map(doc => doc.id);
+    
+    // Fetch all scores for this audition in one query (filtered by clubId)
+    let allScoresSnapshot;
+    if (dancerIds.length > 0) {
+      // Firestore 'in' queries are limited to 10 items, so we need to batch
+      const scoreQueries = [];
+      for (let i = 0; i < dancerIds.length; i += 10) {
+        const batchIds = dancerIds.slice(i, i + 10);
+        scoreQueries.push(
+          db.collection('scores')
+            .where('clubId', '==', clubId)
+            .where('dancerId', 'in', batchIds)
+            .get()
+        );
+      }
+      const scoreResults = await Promise.all(scoreQueries);
+      // Combine all score documents
+      allScoresSnapshot = { docs: scoreResults.flatMap(result => result.docs) };
+    } else {
+      allScoresSnapshot = { docs: [] };
+    }
+    
+    // Group scores by dancerId
+    const scoresByDancerId = {};
+    for (const scoreDoc of allScoresSnapshot.docs) {
+      const scoreData = scoreDoc.data();
+      const dancerId = scoreData.dancerId;
+      if (!scoresByDancerId[dancerId]) {
+        scoresByDancerId[dancerId] = [];
+      }
+      scoresByDancerId[dancerId].push(scoreData);
+    }
+    
     const dancers = [];
     for (const doc of dancersSnapshot.docs) {
       const dancerData = doc.data();
       const dancerId = doc.id;
       
-      // Fetch scores from the scores collection
-      const scoresSnapshot = await db.collection('scores')
-        .where('dancerId', '==', dancerId)
-        .get();
+      // Get scores for this dancer from pre-fetched data
+      const dancerScores = scoresByDancerId[dancerId] || [];
       
       // Build scores object by judge
       const scoresByJudge = {};
       let totalScoreSum = 0;
       let judgeCount = 0;
       
-      for (const scoreDoc of scoresSnapshot.docs) {
-        const scoreData = scoreDoc.data();
-        const judgeName = scoreDoc.data().judgeName;
+      for (const scoreData of dancerScores) {
+        const judgeName = scoreData.judgeName;
         
         if (judgeName) {
           // Handle both nested scores object and flat structure
@@ -687,7 +731,7 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
     // Sort by audition number
     dancers.sort((a, b) => a.auditionNumber - b.auditionNumber);
     
-    console.log(`Returning ${dancers.length} dancers for audition ${id}`);
+    console.log(`Returning ${dancers.length} dancers for audition ${id} (optimized batch fetch)`);
     res.json(dancers);
   } catch (error) {
     console.error('Error fetching dancers for audition:', error);
@@ -4531,6 +4575,19 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
       });
     }
 
+    // Clear cache for this audition's dancers when scores are submitted
+    if (auditionId) {
+      const cacheKey = `dancers_${clubId}_${auditionId}`;
+      cache.del(cacheKey);
+    }
+    // Also clear generic cache
+    const genericCacheKey = `dancers_${clubId}_*`;
+    cache.keys().forEach(key => {
+      if (key.startsWith(`dancers_${clubId}_`)) {
+        cache.del(key);
+      }
+    });
+    
     res.json({ id: docRef.id, ...scoreData });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -4581,14 +4638,16 @@ app.put('/api/scores/unsubmit/:dancerId', authenticateToken, async (req, res) =>
   }
 });
 
-// Get submission status for a judge
+// Get submission status for a judge (single dancer)
 app.get('/api/scores/submission-status/:dancerId', authenticateToken, async (req, res) => {
   try {
     const { dancerId } = req.params;
     const judgeId = req.user.id;
+    const clubId = getClubId(req);
     
     // Try to find scores by judgeId first, then by judgeName
     let scoresSnapshot = await db.collection('scores')
+      .where('clubId', '==', clubId)
       .where('dancerId', '==', dancerId)
       .where('judgeId', '==', judgeId)
       .get();
@@ -4597,6 +4656,7 @@ app.get('/api/scores/submission-status/:dancerId', authenticateToken, async (req
     if (scoresSnapshot.empty) {
       const judgeName = req.user.name || req.user.email || judgeId;
       scoresSnapshot = await db.collection('scores')
+        .where('clubId', '==', clubId)
         .where('dancerId', '==', dancerId)
         .where('judgeName', '==', judgeName)
         .get();
@@ -4614,6 +4674,70 @@ app.get('/api/scores/submission-status/:dancerId', authenticateToken, async (req
       comments: scoreData.comments
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Batch get submission status for multiple dancers (OPTIMIZED)
+app.post('/api/scores/submission-status/batch', authenticateToken, async (req, res) => {
+  try {
+    const { dancerIds } = req.body;
+    const judgeId = req.user.id;
+    const clubId = getClubId(req);
+    
+    if (!Array.isArray(dancerIds) || dancerIds.length === 0) {
+      return res.json({});
+    }
+    
+    // Batch fetch all scores for these dancers and this judge
+    const statusMap = {};
+    
+    // Firestore 'in' queries are limited to 10 items, so we need to batch
+    const scoreQueries = [];
+    for (let i = 0; i < dancerIds.length; i += 10) {
+      const batchIds = dancerIds.slice(i, i + 10);
+      scoreQueries.push(
+        db.collection('scores')
+          .where('clubId', '==', clubId)
+          .where('dancerId', 'in', batchIds)
+          .where('judgeId', '==', judgeId)
+          .get()
+      );
+    }
+    
+    const scoreResults = await Promise.all(scoreQueries);
+    const allScores = scoreResults.flatMap(result => result.docs);
+    
+    // Group scores by dancerId
+    const scoresByDancerId = {};
+    for (const scoreDoc of allScores) {
+      const scoreData = scoreDoc.data();
+      const dancerId = scoreData.dancerId;
+      if (!scoresByDancerId[dancerId]) {
+        scoresByDancerId[dancerId] = [];
+      }
+      scoresByDancerId[dancerId].push(scoreData);
+    }
+    
+    // Build response map
+    for (const dancerId of dancerIds) {
+      const dancerScores = scoresByDancerId[dancerId] || [];
+      if (dancerScores.length === 0) {
+        statusMap[dancerId] = { submitted: false, hasScores: false };
+      } else {
+        const scoreData = dancerScores[0]; // Take first score (should be only one per judge/dancer)
+        statusMap[dancerId] = {
+          submitted: scoreData.submitted || false,
+          hasScores: true,
+          scores: scoreData.scores,
+          comments: scoreData.comments || ''
+        };
+      }
+    }
+    
+    res.json(statusMap);
+  } catch (error) {
+    console.error('Error batch fetching submission status:', error);
     res.status(500).json({ error: error.message });
   }
 });
