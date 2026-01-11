@@ -5696,6 +5696,186 @@ app.get('/api/export/qr-code-pdf', authenticateToken, async (req, res) => {
   }
 });
 
+// File Management Endpoints
+// Get all files organized by category (videos, make-up submissions, exports)
+app.get('/api/files', authenticateToken, async (req, res) => {
+  try {
+    const clubId = getClubId(req);
+    const fs = require('fs');
+    const path = require('path');
+    
+    const files = {
+      videos: [],
+      makeUpSubmissions: [],
+      exports: []
+    };
+    
+    // Get all videos for this club
+    try {
+      const videosSnapshot = await db.collection('audition_videos')
+        .where('clubId', '==', clubId)
+        .get();
+      
+      for (const doc of videosSnapshot.docs) {
+        const videoData = doc.data();
+        const auditionDoc = await db.collection('auditions').doc(videoData.auditionId).get();
+        const auditionName = auditionDoc.exists ? auditionDoc.data().name : 'Unknown Audition';
+        
+        files.videos.push({
+          id: doc.id,
+          type: 'video',
+          name: videoData.originalName || videoData.filename || 'Unknown Video',
+          filename: videoData.filename,
+          size: videoData.size || 0,
+          mimeType: videoData.mimeType || 'video/webm',
+          createdAt: videoData.createdAt?.toDate?.() || videoData.createdAt,
+          recordedAt: videoData.recordedAt?.toDate?.() || videoData.recordedAt,
+          recordedBy: videoData.recordedByName || videoData.recordedBy || 'Unknown',
+          auditionId: videoData.auditionId,
+          auditionName: auditionName,
+          group: videoData.group || 'Unknown Group',
+          description: videoData.description || '',
+          url: `/api/videos/${doc.id}/stream`,
+          path: videoData.videoPath
+        });
+      }
+      
+      // Sort videos by recordedAt descending
+      files.videos.sort((a, b) => {
+        const aDate = new Date(a.recordedAt || a.createdAt).getTime();
+        const bDate = new Date(b.recordedAt || b.createdAt).getTime();
+        return bDate - aDate;
+      });
+    } catch (error) {
+      console.error('Error fetching videos:', error);
+    }
+    
+    // Get all make-up submissions for this club
+    try {
+      const makeUpSnapshot = await db.collection('make_up_submissions')
+        .where('clubId', '==', clubId)
+        .get();
+      
+      for (const doc of makeUpSnapshot.docs) {
+        const makeUpData = doc.data();
+        const eventDoc = await db.collection('attendance_events').doc(makeUpData.eventId).get();
+        const eventName = eventDoc.exists ? eventDoc.data().name : 'Unknown Event';
+        
+        files.makeUpSubmissions.push({
+          id: doc.id,
+          type: 'makeup',
+          name: makeUpData.makeUpOriginalName || makeUpData.makeUpFilename || 'Unknown File',
+          filename: makeUpData.makeUpFilename,
+          size: makeUpData.makeUpSize || 0,
+          mimeType: makeUpData.makeUpMimeType || 'application/pdf',
+          createdAt: makeUpData.submittedAt?.toDate?.() || makeUpData.submittedAt,
+          submittedBy: makeUpData.dancerName || 'Unknown',
+          dancerLevel: makeUpData.dancerLevel || '',
+          eventId: makeUpData.eventId,
+          eventName: eventName,
+          status: makeUpData.status || 'pending',
+          url: makeUpData.makeUpUrl,
+          path: makeUpData.makeUpPath
+        });
+      }
+      
+      // Sort make-up files by submittedAt descending
+      files.makeUpSubmissions.sort((a, b) => {
+        const aDate = new Date(a.createdAt).getTime();
+        const bDate = new Date(b.createdAt).getTime();
+        return bDate - aDate;
+      });
+    } catch (error) {
+      console.error('Error fetching make-up submissions:', error);
+    }
+    
+    // Note: Exports are generated on-demand, so we don't store them
+    // But we could add a history of generated exports in the future
+    
+    res.json(files);
+  } catch (error) {
+    console.error('Error fetching files:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a file (video or make-up submission)
+app.delete('/api/files/:type/:id', authenticateToken, async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const clubId = getClubId(req);
+    const fs = require('fs');
+    const path = require('path');
+    
+    if (type === 'video') {
+      // Get video record first to verify clubId
+      const videoDoc = await db.collection('audition_videos').doc(id).get();
+      if (!videoDoc.exists) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+      
+      const videoData = videoDoc.data();
+      
+      // Security check: verify video belongs to user's club
+      if (videoData.clubId && videoData.clubId !== clubId) {
+        return res.status(403).json({ error: 'Access denied: Video belongs to a different club' });
+      }
+      
+      // Delete video file from server
+      const videoPath = path.join(__dirname, 'uploads', 'videos', videoData.filename || path.basename(videoData.videoPath || ''));
+      if (fs.existsSync(videoPath)) {
+        try {
+          fs.unlinkSync(videoPath);
+          console.log(`✅ Deleted video file: ${videoPath}`);
+        } catch (fileError) {
+          console.error('Error deleting video file:', fileError);
+          // Continue with database deletion even if file deletion fails
+        }
+      }
+      
+      // Delete video record from database
+      await db.collection('audition_videos').doc(id).delete();
+      
+      res.json({ message: 'Video deleted successfully' });
+    } else if (type === 'makeup') {
+      // Get make-up submission record first to verify clubId
+      const makeUpDoc = await db.collection('make_up_submissions').doc(id).get();
+      if (!makeUpDoc.exists) {
+        return res.status(404).json({ error: 'Make-up submission not found' });
+      }
+      
+      const makeUpData = makeUpDoc.data();
+      
+      // Security check: verify make-up submission belongs to user's club
+      if (makeUpData.clubId && makeUpData.clubId !== clubId) {
+        return res.status(403).json({ error: 'Access denied: Make-up submission belongs to a different club' });
+      }
+      
+      // Delete make-up file from server
+      const makeUpPath = path.join(__dirname, 'uploads', 'make-up', makeUpData.makeUpFilename || path.basename(makeUpData.makeUpPath || ''));
+      if (fs.existsSync(makeUpPath)) {
+        try {
+          fs.unlinkSync(makeUpPath);
+          console.log(`✅ Deleted make-up file: ${makeUpPath}`);
+        } catch (fileError) {
+          console.error('Error deleting make-up file:', fileError);
+          // Continue with database deletion even if file deletion fails
+        }
+      }
+      
+      // Delete make-up submission record from database
+      await db.collection('make_up_submissions').doc(id).delete();
+      
+      res.json({ message: 'Make-up submission deleted successfully' });
+    } else {
+      return res.status(400).json({ error: 'Invalid file type' });
+    }
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });

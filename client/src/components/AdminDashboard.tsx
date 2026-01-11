@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import ClubMembers from './ClubMembers';
 import Attendance from './Attendance';
+import FileManager from './FileManager';
 
 interface Audition {
   id: string;
@@ -166,7 +167,7 @@ const AdminDashboard: React.FC = () => {
   });
   
   // New Hub State
-  const [activeTab, setActiveTab] = useState<'overview' | 'auditions' | 'judges' | 'dancers' | 'attendance' | 'absenceRequests' | 'makeUpSubmissions' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'auditions' | 'judges' | 'dancers' | 'attendance' | 'absenceRequests' | 'makeUpSubmissions' | 'files' | 'settings'>('overview');
   const [absenceRequests, setAbsenceRequests] = useState<any[]>([]);
   const [makeUpSubmissions, setMakeUpSubmissions] = useState<any[]>([]);
   const [auditions, setAuditions] = useState<Audition[]>([]);
@@ -1330,6 +1331,11 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
+          {/* Files Tab */}
+          {activeTab === 'files' && (
+            <FileManager />
+          )}
+          
           {/* Make-Up Submissions Tab */}
           {activeTab === 'makeUpSubmissions' && (
             <div className="admin-section">
