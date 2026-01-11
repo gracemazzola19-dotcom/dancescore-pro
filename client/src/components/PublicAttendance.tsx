@@ -22,9 +22,6 @@ const PublicAttendance: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState({
-    status: 'present' as 'present' | 'absent' | 'excused'
-  });
 
   // Check authentication on mount
   useEffect(() => {
@@ -55,8 +52,7 @@ const PublicAttendance: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConfirmAttendance = async () => {
     if (!eventId || !user || user.role !== 'dancer') {
       setError('Please log in as a dancer to submit attendance');
       return;
@@ -66,10 +62,10 @@ const PublicAttendance: React.FC = () => {
       setSubmitting(true);
       setError(null);
 
-      // Submit attendance record (user info comes from token)
+      // Submit attendance record as "present" (user info comes from token)
       await api.post('/api/attendance/records', {
         eventId,
-        status: formData.status
+        status: 'present'
       });
 
       setSubmitted(true);
@@ -87,23 +83,6 @@ const PublicAttendance: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'present': return '#28a745';
-      case 'absent': return '#dc3545';
-      case 'excused': return '#ffc107';
-      default: return '#6c757d';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'present': return 'Present';
-      case 'absent': return 'Absent';
-      case 'excused': return 'Excused';
-      default: return status;
-    }
-  };
 
   // Show loading while checking authentication
   if (authLoading || loading) {
@@ -181,20 +160,18 @@ const PublicAttendance: React.FC = () => {
           }}>
             <p style={{ margin: '0', fontSize: '0.9rem', color: '#666' }}>
               Status: <span style={{ 
-                color: getStatusColor(formData.status),
+                color: '#28a745',
                 fontWeight: 'bold'
               }}>
-                {getStatusLabel(formData.status)}
+                Present
               </span>
             </p>
             <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', color: '#666' }}>
               Points: <span style={{ 
-                color: formData.status === 'present' ? '#28a745' : 
-                       formData.status === 'absent' ? '#dc3545' : '#ffc107',
+                color: '#28a745',
                 fontWeight: 'bold'
               }}>
-                {formData.status === 'present' ? `+${event?.pointsValue || 1}` : 
-                 formData.status === 'absent' ? `-${event?.pointsValue || 1}` : '0'}
+                +{event?.pointsValue || 1}
               </span>
             </p>
           </div>
@@ -280,59 +257,27 @@ const PublicAttendance: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '2rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
-                fontWeight: 'bold',
-                color: '#333'
-              }}>
-                Attendance Status *
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
-                {(['present', 'absent', 'excused'] as const).map(status => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, status })}
-                    style={{
-                      padding: '0.75rem',
-                      border: `2px solid ${formData.status === status ? getStatusColor(status) : '#dee2e6'}`,
-                      borderRadius: '0.5rem',
-                      backgroundColor: formData.status === status ? getStatusColor(status) : 'white',
-                      color: formData.status === status ? 'white' : '#333',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {getStatusLabel(status)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <div style={{ textAlign: 'center' }}>
             <button
-              type="submit"
+              onClick={handleConfirmAttendance}
               disabled={submitting}
               style={{
                 width: '100%',
-                padding: '1rem',
-                backgroundColor: submitting ? '#6c757d' : '#007bff',
+                padding: '1.5rem',
+                backgroundColor: submitting ? '#6c757d' : '#28a745',
                 color: 'white',
                 border: 'none',
                 borderRadius: '0.5rem',
-                fontSize: '1.1rem',
+                fontSize: '1.2rem',
                 fontWeight: 'bold',
                 cursor: submitting ? 'not-allowed' : 'pointer',
-                transition: 'background-color 0.2s'
+                transition: 'background-color 0.2s',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
               }}
             >
-              {submitting ? 'Submitting...' : 'Submit Attendance'}
+              {submitting ? 'Confirming...' : 'Confirm Attendance'}
             </button>
-          </form>
+          </div>
         </div>
       </div>
 
