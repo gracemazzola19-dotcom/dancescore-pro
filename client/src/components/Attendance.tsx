@@ -72,6 +72,7 @@ const Attendance: React.FC = () => {
   const [eventForm, setEventForm] = useState({
     name: '',
     date: '',
+    time: '',
     type: 'practice' as const,
     pointsValue: 1,
     description: ''
@@ -172,10 +173,20 @@ const Attendance: React.FC = () => {
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/api/attendance/events', eventForm);
+      // Combine date and time into a single datetime string
+      const dateTimeString = eventForm.time 
+        ? `${eventForm.date}T${eventForm.time}`
+        : eventForm.date;
+      
+      const eventData = {
+        ...eventForm,
+        date: dateTimeString
+      };
+      
+      await api.post('/api/attendance/events', eventData);
       console.log('Event created successfully');
       setShowEventForm(false);
-      setEventForm({ name: '', date: '', type: 'practice', pointsValue: 1, description: '' });
+      setEventForm({ name: '', date: '', time: '', type: 'practice', pointsValue: 1, description: '' });
       fetchData();
     } catch (error) {
       console.error('Error creating event:', error);
@@ -850,6 +861,16 @@ const Attendance: React.FC = () => {
                   value={eventForm.date}
                   onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
                   required
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ced4da' }}
+                />
+              </div>
+              
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>Time (Optional)</label>
+                <input
+                  type="time"
+                  value={eventForm.time}
+                  onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })}
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #ced4da' }}
                 />
               </div>
