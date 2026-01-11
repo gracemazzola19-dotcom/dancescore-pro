@@ -631,7 +631,7 @@ const AdminDashboard: React.FC = () => {
     }
 
     try {
-      await api.delete(`/api/dancers/${memberId}`);
+      await api.delete(`/api/club-members/${memberId}`);
       setClubMembers(clubMembers.filter(m => m.id !== memberId));
       
       // Invalidate cache
