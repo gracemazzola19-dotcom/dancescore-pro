@@ -1692,8 +1692,22 @@ app.post('/api/register', async (req, res) => {
       });
     }
     
+    // Get clubId from audition if auditionId is provided
+    let clubId = 'msu-dance-club'; // Default clubId for backwards compatibility
+    if (auditionId) {
+      const auditionDoc = await db.collection('auditions').doc(auditionId).get();
+      if (auditionDoc.exists) {
+        const auditionData = auditionDoc.data();
+        if (auditionData.clubId) {
+          clubId = auditionData.clubId;
+        }
+      }
+    }
+    
     // Check for duplicate audition number in this specific audition (if auditionId provided)
+    // Filter by clubId to ensure proper multi-tenant isolation
     let duplicateQuery = db.collection('dancers')
+      .where('clubId', '==', clubId)
       .where('auditionNumber', '==', auditionNumber.toString());
     
     if (auditionId) {
@@ -1725,6 +1739,7 @@ app.post('/api/register', async (req, res) => {
       previousMember: previousMember,
       previousLevel: previousMember === 'yes' ? previousLevel : null,
       group: autoGroup,
+      clubId: clubId, // Multi-tenant: associate with audition's club
       auditionId: auditionId || null,
       createdAt: new Date(),
       registeredVia: 'self-registration',
