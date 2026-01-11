@@ -89,16 +89,45 @@ const DancerLogin: React.FC = () => {
           });
           
           if (response.data.success) {
+            // Check if email sending failed
+            if (response.data.emailFailed) {
+              // Email failed - allow login without verification as fallback
+              console.warn('Email sending failed, allowing login without verification');
+              toast.warning(response.data.warning || 'Email service unavailable. Proceeding with login without verification.');
+              // Proceed with normal login
+              const loginResponse = await axios.post(
+                `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
+                { email, password }
+              );
+              const userData = loginResponse.data;
+              localStorage.setItem('token', userData.token);
+              localStorage.setItem('user', JSON.stringify(userData.user));
+              setUser(userData.user);
+              toast.success(`Welcome ${userData.user.name}!`);
+              navigate('/dancer');
+              return;
+            }
             toast.success('Verification code sent to your email!');
             setShowVerification(true);
             setLoading(false);
             return;
           }
         } catch (verificationError: any) {
+          // If verification endpoint fails, allow login without verification as fallback
           console.error('Error sending verification code:', verificationError);
-          const errorMsg = verificationError.response?.data?.error || 'Failed to send verification code. Please try again.';
-          toast.error(errorMsg);
-          setLoading(false);
+          console.warn('Allowing login without verification due to email service failure');
+          toast.warning('Email service unavailable. Proceeding with login without verification.');
+          // Proceed with normal login
+          const loginResponse = await axios.post(
+            `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
+            { email, password }
+          );
+          const userData = loginResponse.data;
+          localStorage.setItem('token', userData.token);
+          localStorage.setItem('user', JSON.stringify(userData.user));
+          setUser(userData.user);
+          toast.success(`Welcome ${userData.user.name}!`);
+          navigate('/dancer');
           return;
         }
       } else {

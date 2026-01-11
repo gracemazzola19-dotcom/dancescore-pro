@@ -11,7 +11,7 @@ const Login: React.FC = () => {
   const [selectedRoleType, setSelectedRoleType] = useState<LoginRoleType>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedView, setSelectedView] = useState('judge');
+  const [selectedView, setSelectedView] = useState('admin');
   const [loading, setLoading] = useState(false);
   const [showViewSelection, setShowViewSelection] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
@@ -76,7 +76,7 @@ const Login: React.FC = () => {
       // If email verification is required, send code first (without logging in)
       if (currentVerificationRequired) {
         try {
-          const userType = selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'judge';
+          const userType = selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer';
           console.log('Sending verification code for:', { email, userType, clubId });
           const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
             email,
@@ -85,16 +85,37 @@ const Login: React.FC = () => {
           });
           
           if (response.data.success) {
+            // Check if email sending failed
+            if (response.data.emailFailed) {
+              // Email failed - allow login without verification as fallback
+              console.warn('Email sending failed, allowing login without verification');
+              toast.warning(response.data.warning || 'Email service unavailable. Proceeding with login without verification.');
+              // Proceed with normal login
+              const loginResponse = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/login`, {
+                email,
+                password,
+                selectedRole: selectedRoleType
+              });
+              await completeLogin(loginResponse.data);
+              return;
+            }
             toast.success('Verification code sent to your email!');
             setShowVerification(true);
             setLoading(false);
             return;
           }
         } catch (verificationError: any) {
+          // If verification endpoint fails, allow login without verification as fallback
           console.error('Error sending verification code:', verificationError);
-          const errorMsg = verificationError.response?.data?.error || 'Failed to send verification code. Please try again.';
-          toast.error(errorMsg);
-          setLoading(false);
+          console.warn('Allowing login without verification due to email service failure');
+          toast.warning('Email service unavailable. Proceeding with login without verification.');
+          // Proceed with normal login
+          const loginResponse = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/login`, {
+            email,
+            password,
+            selectedRole: selectedRoleType
+          });
+          await completeLogin(loginResponse.data);
           return;
         }
       } else {
@@ -102,7 +123,8 @@ const Login: React.FC = () => {
         console.log('Verification not required, proceeding with normal login');
         const loginResponse = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/login`, {
           email,
-          password
+          password,
+          selectedRole: selectedRoleType
         });
         await completeLogin(loginResponse.data);
       }
@@ -140,55 +162,31 @@ const Login: React.FC = () => {
 
   const completeLogin = async (userData: any) => {
     if (selectedRoleType === 'admin') {
-      // Admin login - go directly to admin dashboard
-      if (userData.user.canAccessAdmin || userData.user.role === 'admin') {
-        localStorage.setItem('token', userData.token);
-        localStorage.setItem('user', JSON.stringify(userData.user));
-        setUser(userData.user);
-        toast.success(`Welcome ${userData.user.name}!`);
-        navigate('/admin');
-      } else {
-        toast.error('You do not have admin access.');
-        setLoading(false);
-      }
-    } else if (selectedRoleType === 'eboard') {
-      // E-board member login - show view selection if they have multiple options
+      // Admin login - show view selection (Admin Dashboard OR Judge Dashboard)
       localStorage.setItem('token', userData.token);
       localStorage.setItem('user', JSON.stringify(userData.user));
       setUser(userData.user);
       
-      // Check if user has coordinator access
-      // Coordinators are identified by: position in ['Abi', 'Sophia', 'Devin', 'Taylor'] 
-      // OR name contains "Coordinator" OR role is 'coordinator'
-      const coordinatorPositions = ['Abi', 'Sophia', 'Devin', 'Taylor'];
-      const hasCoordinatorAccess = userData.user.role === 'coordinator' || 
-                                   (userData.user.position && coordinatorPositions.includes(userData.user.position)) ||
-                                   (userData.user.name && userData.user.name.toLowerCase().includes('coordinator'));
-      
-      // Check if user has judge access (default for e-board members unless only coordinator)
-      const hasJudgeAccess = userData.user.role === 'judge' || 
-                             userData.user.canAccessAdmin ||
-                             !hasCoordinatorAccess; // If not specifically a coordinator, assume judge access
-      
-      if (hasCoordinatorAccess && hasJudgeAccess) {
-        // User has multiple views, show selection
-        const views: string[] = [];
-        if (hasJudgeAccess) views.push('judge');
-        if (hasCoordinatorAccess) views.push('coordinator');
-        setAvailableViews(views);
-        setSelectedView(views[0] || 'judge'); // Default to first available view
-        setTempUserData(userData);
-        setShowViewSelection(true);
-        setLoading(false);
-      } else if (hasCoordinatorAccess) {
-        // Only coordinator access
-        toast.success(`Welcome ${userData.user.name}!`);
-        navigate('/coordinator');
-      } else {
-        // Only judge access (default for e-board members)
-        toast.success(`Welcome ${userData.user.name}!`);
-        navigate('/judge');
-      }
+      // Admins can access both Admin and Judge pages
+      // Show selection screen
+      setAvailableViews(['admin', 'judge']);
+      setSelectedView('admin'); // Default to admin
+      setTempUserData(userData);
+      setShowViewSelection(true);
+      setLoading(false);
+    } else if (selectedRoleType === 'eboard') {
+      // E-board member login - go directly to Judge Dashboard (no admin access)
+      localStorage.setItem('token', userData.token);
+      localStorage.setItem('user', JSON.stringify(userData.user));
+      console.log('E-board login - userData:', userData);
+      console.log('E-board login - user role:', userData.user.role);
+      setUser(userData.user);
+      toast.success(`Welcome ${userData.user.name}!`);
+      // Use setTimeout to ensure state updates before navigation
+      setTimeout(() => {
+        console.log('Navigating to /judge, user should be:', JSON.parse(localStorage.getItem('user') || '{}'));
+        window.location.href = '/judge';
+      }, 100);
     } else {
       // Should not reach here, but handle just in case
       setLoading(false);
@@ -201,15 +199,16 @@ const Login: React.FC = () => {
       // User is already authenticated, just navigate to selected view
       const userName = tempUserData?.user?.name || 'User';
       
-      if (selectedView === 'coordinator') {
+      if (selectedView === 'admin') {
         toast.success(`Welcome ${userName}!`);
-        navigate('/coordinator');
+        navigate('/admin');
       } else if (selectedView === 'judge') {
         toast.success(`Welcome ${userName}!`);
         navigate('/judge');
       } else {
+        // Default to admin
         toast.success(`Welcome ${userName}!`);
-        navigate('/judge'); // Default to judge
+        navigate('/admin');
       }
     } catch (error) {
       toast.error('Failed to load dashboard. Please try again.');
@@ -295,7 +294,7 @@ const Login: React.FC = () => {
           <VerificationCode
             email={email}
             password={password}
-            userType={selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'judge'}
+            userType={selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
             clubId={tempUserData?.user?.clubId || clubId}
             onVerified={handleVerificationComplete}
             onCancel={() => {
@@ -375,17 +374,17 @@ const Login: React.FC = () => {
             </p>
             
             <div className="form-group">
-              <label className="form-label">Select View</label>
+              <label className="form-label">Select Dashboard</label>
               <select
                 className="form-input"
                 value={selectedView}
                 onChange={(e) => setSelectedView(e.target.value)}
               >
-                {availableViews.includes('judge') && (
-                  <option value="judge">Judge View (Score Dancers)</option>
+                {availableViews.includes('admin') && (
+                  <option value="admin">Admin Dashboard</option>
                 )}
-                {availableViews.includes('coordinator') && (
-                  <option value="coordinator">Coordinator View (Manage Attendance)</option>
+                {availableViews.includes('judge') && (
+                  <option value="judge">Judge Dashboard</option>
                 )}
               </select>
             </div>
@@ -406,7 +405,7 @@ const Login: React.FC = () => {
                 setPassword('');
                 setSelectedRoleType(null);
                 setAvailableViews([]);
-                setSelectedView('judge');
+                setSelectedView('admin');
               }}
               style={{
                 marginTop: '1rem',

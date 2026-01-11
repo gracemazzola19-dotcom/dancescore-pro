@@ -2007,10 +2007,15 @@ app.post('/api/auth/send-verification-code', async (req, res) => {
       });
     } catch (emailError) {
       console.error('Error sending verification email:', emailError);
-      // Still store the code, but inform user about email issue
-      res.status(500).json({ 
-        error: 'Failed to send verification email. Please check your email configuration or contact your administrator.',
-        details: emailError.message
+      // Code is already stored in database, so return success but with email failure flag
+      // This allows the login process to continue even if email fails
+      // The verification code is stored and can be used if email service recovers
+      res.json({ 
+        success: true, 
+        message: 'Verification code generated. Email delivery failed - please contact your administrator if this persists.',
+        expiresIn: 600,
+        emailFailed: true, // Flag to indicate email sending failed
+        warning: 'Email service is experiencing issues. You may need to contact your administrator to retrieve your verification code.'
       });
     }
   } catch (error) {
