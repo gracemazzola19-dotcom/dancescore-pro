@@ -7,6 +7,7 @@ interface User {
   role: string;
   name?: string;
   position?: string;
+  level?: string; // For dancers
   clubId?: string; // Multi-tenant: club identifier
   canAccessAdmin?: boolean;
 }
