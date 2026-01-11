@@ -23,6 +23,7 @@ interface Judge {
   email: string;
   role: 'judge' | 'admin' | 'secretary';
   position: string;
+  password?: string; // User's password (stored for admin visibility)
   active: boolean;
 }
 
@@ -1068,6 +1069,7 @@ const AdminDashboard: React.FC = () => {
                         <th>Name</th>
                         <th>Email</th>
                         <th>Position</th>
+                        <th>Password</th>
                         <th>Role</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -1079,6 +1081,9 @@ const AdminDashboard: React.FC = () => {
                           <td>{judge.name}</td>
                           <td>{judge.email}</td>
                           <td>{judge.position || '-'}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                            {judge.password || judge.position || '-'}
+                          </td>
                           <td>
                             <span style={{
                               padding: '0.25rem 0.75rem',

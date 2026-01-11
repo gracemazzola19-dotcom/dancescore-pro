@@ -2090,9 +2090,17 @@ app.post('/api/auth/verify-code', async (req, res) => {
         const judgeDoc = judgesSnapshot.docs[0];
         const judge = judgeDoc.data();
 
-        if (judge.position !== password) {
+        // Verify password - check password field first, fallback to position for existing users
+        const passwordMatch = judge.password 
+          ? judge.password === password 
+          : judge.position === password;
+
+        if (!passwordMatch) {
           return res.status(401).json({ error: 'Invalid credentials' });
         }
+
+        // Check if password change is required
+        const requiresPasswordChange = !judge.passwordChanged && !judge.password;
 
         // Return success - the frontend will proceed with login
         // Login count will be incremented in the login endpoint
@@ -2101,7 +2109,8 @@ app.post('/api/auth/verify-code', async (req, res) => {
           message: 'Verification code verified',
           verified: true,
           userId: judgeDoc.id,
-          userType: userType
+          userType: userType,
+          requiresPasswordChange: requiresPasswordChange
         });
       } else if (userType === 'dancer') {
         // Verify password (level) for dancers
@@ -2118,9 +2127,17 @@ app.post('/api/auth/verify-code', async (req, res) => {
         const memberDoc = membersSnapshot.docs[0];
         const member = memberDoc.data();
 
-        if (member.level !== password) {
+        // Verify password - check password field first, fallback to level for existing users
+        const passwordMatch = member.password 
+          ? member.password === password 
+          : member.level === password;
+
+        if (!passwordMatch) {
           return res.status(401).json({ error: 'Invalid credentials' });
         }
+
+        // Check if password change is required
+        const requiresPasswordChange = !member.passwordChanged && !member.password;
 
         // Return success - the frontend will proceed with login
         res.json({ 
@@ -2128,7 +2145,8 @@ app.post('/api/auth/verify-code', async (req, res) => {
           message: 'Verification code verified',
           verified: true,
           userId: memberDoc.id,
-          userType: 'dancer'
+          userType: 'dancer',
+          requiresPasswordChange: requiresPasswordChange
         });
       }
     } else {
@@ -2171,11 +2189,19 @@ app.post('/api/auth/login', async (req, res) => {
     // Get clubId from judge (should exist after migration)
     const clubId = judge.clubId || 'msu-dance-club'; // Fallback for safety
     
-    // Verify password matches position
-    if (judge.position !== password) {
-      console.log('Password (position) mismatch for:', email);
+    // Verify password - check password field first, fallback to position for existing users
+    const passwordMatch = judge.password 
+      ? judge.password === password 
+      : judge.position === password;
+    
+    if (!passwordMatch) {
+      console.log('Password mismatch for:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    
+    // Check if this is first-time login (password not changed yet)
+    const requiresPasswordChange = !judge.passwordChanged && !judge.password;
+    const firstTimeLogin = judge.firstTimeLogin !== false; // Default to true if not set
     
     // Determine the role to use
     // If selectedRole is provided (user chose), use that
@@ -2195,7 +2221,7 @@ app.post('/api/auth/login', async (req, res) => {
       // Don't force role, let the frontend decide via canAccessAdmin flag
     }
     
-    console.log('✅ Login successful:', { email, role: roleToUse, name: judge.name, clubId, canAccessAdmin });
+    console.log('✅ Login successful:', { email, role: roleToUse, name: judge.name, clubId, canAccessAdmin, requiresPasswordChange });
     
     // Increment login count after successful login
     const currentLoginCount = judge.loginCount || 0;
@@ -2220,7 +2246,8 @@ app.post('/api/auth/login', async (req, res) => {
         name: judge.name,
         position: judge.position || '',
         clubId: clubId, // Include clubId in user object
-        canAccessAdmin: canAccessAdmin // Flag to show role selector for admin and secretary
+        canAccessAdmin: canAccessAdmin, // Flag to show role selector for admin and secretary
+        requiresPasswordChange: requiresPasswordChange // Flag to show password change UI
       } 
     });
   } catch (error) {
@@ -2254,13 +2281,21 @@ app.post('/api/auth/dancer-login', async (req, res) => {
     // Get clubId from member (should exist after migration)
     const clubId = member.clubId || 'msu-dance-club'; // Fallback for safety
     
-    // Verify password matches the dancer's level
-    if (member.level !== password) {
+    // Verify password - check password field first, fallback to level for existing users
+    const passwordMatch = member.password 
+      ? member.password === password 
+      : member.level === password;
+    
+    if (!passwordMatch) {
       console.log('Password (level) mismatch for:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    console.log('✅ Dancer login successful:', { email, name: member.name, level: member.level, clubId });
+    // Check if this is first-time login (password not changed yet)
+    const requiresPasswordChange = !member.passwordChanged && !member.password;
+    const firstTimeLogin = member.firstTimeLogin !== false; // Default to true if not set
+    
+    console.log('✅ Dancer login successful:', { email, name: member.name, level: member.level, clubId, requiresPasswordChange });
     
     // Increment login count after successful login
     const currentLoginCount = member.loginCount || 0;
@@ -2285,11 +2320,269 @@ app.post('/api/auth/dancer-login', async (req, res) => {
         name: member.name,
         level: member.level,
         clubId: clubId, // Include clubId in user object
-        shirtSize: member.shirtSize || ''
+        shirtSize: member.shirtSize || '',
+        requiresPasswordChange: requiresPasswordChange // Flag to show password change UI
       } 
     });
   } catch (error) {
     console.error('Dancer login error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Password change endpoint for judges/admins
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { newPassword, currentPassword } = req.body;
+    const userId = req.user.id;
+    const clubId = getClubId(req);
+    
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    
+    // Get judge from database
+    const judgeDoc = await db.collection('judges').doc(userId).get();
+    if (!judgeDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const judge = judgeDoc.data();
+    
+    // Security check: verify judge belongs to user's club
+    if (judge.clubId && judge.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Verify current password (check password field first, fallback to position for existing users)
+    const currentPasswordMatch = judge.password 
+      ? judge.password === currentPassword 
+      : judge.position === currentPassword;
+    
+    if (!currentPasswordMatch) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    
+    // Update password (store in plaintext for admin visibility as requested)
+    await judgeDoc.ref.update({
+      password: newPassword,
+      passwordChanged: true,
+      passwordChangedAt: new Date(),
+      firstTimeLogin: false
+    });
+    
+    console.log(`✅ Password changed for judge: ${judge.email} in club ${clubId}`);
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Password change error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Password change endpoint for dancers
+app.post('/api/auth/change-dancer-password', authenticateToken, async (req, res) => {
+  try {
+    const { newPassword, currentPassword } = req.body;
+    const userId = req.user.id;
+    const clubId = getClubId(req);
+    
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    
+    // Get dancer from database
+    const memberDoc = await db.collection('club_members').doc(userId).get();
+    if (!memberDoc.exists) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const member = memberDoc.data();
+    
+    // Security check: verify member belongs to user's club
+    if (member.clubId && member.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Verify current password (check password field first, fallback to level for existing users)
+    const currentPasswordMatch = member.password 
+      ? member.password === currentPassword 
+      : member.level === currentPassword;
+    
+    if (!currentPasswordMatch) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    
+    // Update password (store in plaintext for admin visibility as requested)
+    await memberDoc.ref.update({
+      password: newPassword,
+      passwordChanged: true,
+      passwordChangedAt: new Date(),
+      firstTimeLogin: false
+    });
+    
+    console.log(`✅ Password changed for dancer: ${member.email} in club ${clubId}`);
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Dancer password change error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Forgot password - send reset code
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email, userType, clubId: providedClubId } = req.body;
+    const clubId = providedClubId || 'msu-dance-club';
+    
+    if (!email || !userType) {
+      return res.status(400).json({ error: 'Email and user type are required' });
+    }
+    
+    let userDoc = null;
+    let userName = 'User';
+    
+    if (userType === 'judge' || userType === 'admin' || userType === 'eboard') {
+      const judgesSnapshot = await db.collection('judges')
+        .where('email', '==', email.toLowerCase().trim())
+        .where('active', '==', true)
+        .where('clubId', '==', clubId)
+        .limit(1)
+        .get();
+      
+      if (judgesSnapshot.empty) {
+        // Don't reveal if user exists for security
+        return res.json({ success: true, message: 'If an account exists, a reset code has been sent' });
+      }
+      
+      userDoc = judgesSnapshot.docs[0];
+      userName = userDoc.data().name || 'User';
+    } else if (userType === 'dancer') {
+      const membersSnapshot = await db.collection('club_members')
+        .where('email', '==', email.toLowerCase().trim())
+        .where('clubId', '==', clubId)
+        .limit(1)
+        .get();
+      
+      if (membersSnapshot.empty) {
+        return res.json({ success: true, message: 'If an account exists, a reset code has been sent' });
+      }
+      
+      userDoc = membersSnapshot.docs[0];
+      userName = userDoc.data().name || 'User';
+    } else {
+      return res.status(400).json({ error: 'Invalid user type' });
+    }
+    
+    // Generate reset code
+    const resetCode = emailService.generateVerificationCode();
+    const expiresAt = Date.now() + (15 * 60 * 1000); // 15 minutes
+    
+    // Store reset code
+    await db.collection('password_reset_codes').add({
+      email: email.toLowerCase().trim(),
+      code: resetCode,
+      userType: userType,
+      userId: userDoc.id,
+      clubId: clubId,
+      expiresAt: expiresAt,
+      createdAt: Date.now(),
+      used: false
+    });
+    
+    // Send reset code email
+    try {
+      await emailService.sendVerificationCode(email, resetCode, userName);
+      res.json({ success: true, message: 'Password reset code sent to your email' });
+    } catch (emailError) {
+      console.error('Error sending reset code email:', emailError);
+      // Still return success (code stored) - user can contact admin
+      res.json({ 
+        success: true, 
+        message: 'Reset code generated. Email delivery failed - please contact your administrator.',
+        emailFailed: true
+      });
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reset password with code
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { email, code, newPassword, userType, clubId: providedClubId } = req.body;
+    const clubId = providedClubId || 'msu-dance-club';
+    
+    if (!email || !code || !newPassword || !userType) {
+      return res.status(400).json({ error: 'Email, code, new password, and user type are required' });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    
+    // Find reset code
+    const codesSnapshot = await db.collection('password_reset_codes')
+      .where('email', '==', email.toLowerCase().trim())
+      .where('code', '==', code)
+      .where('userType', '==', userType)
+      .where('clubId', '==', clubId)
+      .where('used', '==', false)
+      .get();
+    
+    if (codesSnapshot.empty) {
+      return res.status(400).json({ error: 'Invalid or expired reset code' });
+    }
+    
+    // Find the most recent unused code
+    const validCodes = codesSnapshot.docs
+      .map(doc => ({ doc, data: doc.data() }))
+      .filter(({ data }) => !data.used && data.expiresAt > Date.now())
+      .sort((a, b) => b.data.createdAt - a.data.createdAt);
+    
+    if (validCodes.length === 0) {
+      return res.status(400).json({ error: 'Reset code has expired. Please request a new one.' });
+    }
+    
+    const codeDoc = validCodes[0].doc;
+    
+    // Mark code as used
+    await codeDoc.ref.update({ used: true });
+    
+    // Update password
+    const userId = codeDoc.data().userId;
+    
+    if (userType === 'judge' || userType === 'admin' || userType === 'eboard') {
+      const judgeDoc = await db.collection('judges').doc(userId).get();
+      if (!judgeDoc.exists) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      await judgeDoc.ref.update({
+        password: newPassword,
+        passwordChanged: true,
+        passwordChangedAt: new Date(),
+        firstTimeLogin: false
+      });
+    } else if (userType === 'dancer') {
+      const memberDoc = await db.collection('club_members').doc(userId).get();
+      if (!memberDoc.exists) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      await memberDoc.ref.update({
+        password: newPassword,
+        passwordChanged: true,
+        passwordChangedAt: new Date(),
+        firstTimeLogin: false
+      });
+    }
+    
+    console.log(`✅ Password reset for ${userType}: ${email} in club ${clubId}`);
+    res.json({ success: true, message: 'Password reset successfully. You can now log in with your new password.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ error: error.message });
   }
 });

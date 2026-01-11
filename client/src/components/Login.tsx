@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import VerificationCode from './VerificationCode';
+import PasswordChange from './PasswordChange';
 
 type LoginRoleType = 'dancer' | 'eboard' | 'admin' | null;
 
@@ -15,6 +16,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showViewSelection, setShowViewSelection] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [tempUserData, setTempUserData] = useState<any>(null);
   const [availableViews, setAvailableViews] = useState<string[]>([]);
   const [clubId, setClubId] = useState('msu-dance-club');
@@ -126,7 +128,17 @@ const Login: React.FC = () => {
           password,
           selectedRole: selectedRoleType
         });
-        await completeLogin(loginResponse.data);
+        
+        // Check if password change is required
+        if (loginResponse.data.user?.requiresPasswordChange) {
+          // Store token in localStorage so password change endpoint can use it
+          localStorage.setItem('token', loginResponse.data.token);
+          setTempUserData(loginResponse.data);
+          setShowPasswordChange(true);
+          setLoading(false);
+        } else {
+          await completeLogin(loginResponse.data);
+        }
       }
     } catch (error: any) {
       console.error('Login error:', error);
@@ -136,8 +148,8 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleVerificationComplete = async (verified: boolean) => {
-    // After verification is complete (code and password verified), complete login
+  const handleVerificationComplete = async (verified: boolean, requiresPasswordChange?: boolean) => {
+    // After verification is complete (code and password verified), check if password change is required
     if (verified) {
       setLoading(true);
       try {
@@ -145,9 +157,25 @@ const Login: React.FC = () => {
         // Now complete the login to get the token
         const loginResponse = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/login`, {
           email,
-          password
+          password,
+          selectedRole: selectedRoleType
         });
-        await completeLogin(loginResponse.data);
+        
+        // Check if password change is required (from verify-code response or login response)
+        const needsPasswordChange = requiresPasswordChange || loginResponse.data.user?.requiresPasswordChange;
+        
+        if (needsPasswordChange) {
+          // Store token in localStorage so password change endpoint can use it
+          localStorage.setItem('token', loginResponse.data.token);
+          // Store login data temporarily, show password change UI
+          setTempUserData(loginResponse.data);
+          setShowVerification(false);
+          setShowPasswordChange(true);
+          setLoading(false);
+        } else {
+          // No password change required, complete login normally
+          await completeLogin(loginResponse.data);
+        }
       } catch (error: any) {
         console.error('Login completion error:', error);
         toast.error(error.response?.data?.error || 'Failed to complete login. Please try again.');
@@ -157,6 +185,39 @@ const Login: React.FC = () => {
       // Verification failed, allow retry
       setShowVerification(false);
       setLoading(false);
+    }
+  };
+
+  const handlePasswordChangeComplete = async (success: boolean) => {
+    if (success && tempUserData) {
+      // Password changed successfully, now complete login with updated credentials
+      // Re-login to get fresh token
+      try {
+        setLoading(true);
+        // Note: We need to re-login after password change, but we don't have the new password here
+        // The password change endpoint doesn't return a new token, so we need to either:
+        // 1. Ask user to login again with new password, or
+        // 2. Have the password change endpoint return a new token
+        
+        // For now, let's use the stored token from tempUserData (it should still be valid)
+        // The user will use their new password on next login
+        await completeLogin(tempUserData);
+        setShowPasswordChange(false);
+        setTempUserData(null);
+      } catch (error: any) {
+        console.error('Error completing login after password change:', error);
+        toast.error('Password changed, but login failed. Please log in again with your new password.');
+        setShowPasswordChange(false);
+        setLoading(false);
+        // Reset form to allow re-login
+        setPassword('');
+        setShowVerification(false);
+      }
+    } else {
+      // Password change failed or cancelled
+      setShowPasswordChange(false);
+      setLoading(false);
+      setShowVerification(false);
     }
   };
 
@@ -289,6 +350,21 @@ const Login: React.FC = () => {
               </button>
             </p>
           </div>
+        ) : showPasswordChange ? (
+          // Step 2.7: Password Change (First Login)
+          <PasswordChange
+            email={email}
+            userType={selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer'}
+            currentPassword={password}
+            clubId={tempUserData?.user?.clubId || clubId}
+            onPasswordChanged={handlePasswordChangeComplete}
+            onCancel={() => {
+              setShowPasswordChange(false);
+              setShowVerification(false);
+              setPassword('');
+              setLoading(false);
+            }}
+          />
         ) : showVerification ? (
           // Step 2.5: Email Verification
           <VerificationCode

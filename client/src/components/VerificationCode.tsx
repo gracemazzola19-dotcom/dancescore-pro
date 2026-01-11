@@ -7,7 +7,7 @@ interface VerificationCodeProps {
   userType: 'judge' | 'admin' | 'eboard' | 'dancer';
   password?: string; // Password to verify after code is verified
   clubId?: string;
-  onVerified: (verified: boolean) => void; // Pass verification result back
+  onVerified: (verified: boolean, requiresPasswordChange?: boolean) => void; // Pass verification result and password change requirement
   onCancel: () => void;
   expiresIn?: number; // seconds
 }
@@ -62,7 +62,7 @@ const VerificationCode: React.FC<VerificationCodeProps> = ({
 
       if (response.data.success && response.data.verified) {
         toast.success('Verification code verified!');
-        onVerified(true); // Pass true to indicate successful verification
+        onVerified(true, response.data.requiresPasswordChange); // Pass verification result and password change requirement
       } else {
         toast.error('Invalid verification code');
         onVerified(false);

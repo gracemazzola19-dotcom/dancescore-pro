@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import VerificationCode from './VerificationCode';
+import PasswordChange from './PasswordChange';
 
 const DancerLogin: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -12,6 +13,8 @@ const DancerLogin: React.FC = () => {
   const [clubName, setClubName] = useState<string>('MSU Dance Club');
   const [clubId, setClubId] = useState('msu-dance-club');
   const [showVerification, setShowVerification] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [tempUserData, setTempUserData] = useState<any>(null);
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [codeExpiry, setCodeExpiry] = useState(600);
   const { setUser } = useAuth();
@@ -99,6 +102,15 @@ const DancerLogin: React.FC = () => {
                 `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
                 { email, password }
               );
+              // Check if password change is required
+              if (loginResponse.data.user?.requiresPasswordChange) {
+                // Store token in localStorage so password change endpoint can use it
+                localStorage.setItem('token', loginResponse.data.token);
+                setTempUserData(loginResponse.data);
+                setShowPasswordChange(true);
+                setLoading(false);
+                return;
+              }
               const userData = loginResponse.data;
               localStorage.setItem('token', userData.token);
               localStorage.setItem('user', JSON.stringify(userData.user));
@@ -138,12 +150,21 @@ const DancerLogin: React.FC = () => {
           { email, password }
         );
 
-        const userData = response.data;
-        localStorage.setItem('token', userData.token);
-        localStorage.setItem('user', JSON.stringify(userData.user));
-        setUser(userData.user);
-        toast.success(`Welcome ${userData.user.name}!`);
-        navigate('/dancer');
+        // Check if password change is required
+        if (response.data.user?.requiresPasswordChange) {
+          // Store token in localStorage so password change endpoint can use it
+          localStorage.setItem('token', response.data.token);
+          setTempUserData(response.data);
+          setShowPasswordChange(true);
+          setLoading(false);
+        } else {
+          const userData = response.data;
+          localStorage.setItem('token', userData.token);
+          localStorage.setItem('user', JSON.stringify(userData.user));
+          setUser(userData.user);
+          toast.success(`Welcome ${userData.user.name}!`);
+          navigate('/dancer');
+        }
       }
     } catch (error: any) {
       console.error('Login error:', error);
@@ -154,8 +175,8 @@ const DancerLogin: React.FC = () => {
     }
   };
 
-  const handleVerificationComplete = async (verified: boolean) => {
-    // After verification is complete (code and password verified), complete login
+  const handleVerificationComplete = async (verified: boolean, requiresPasswordChange?: boolean) => {
+    // After verification is complete (code and password verified), check if password change is required
     if (verified) {
       setLoading(true);
       try {
@@ -166,12 +187,26 @@ const DancerLogin: React.FC = () => {
           { email, password }
         );
 
-        const userData = response.data;
-        localStorage.setItem('token', userData.token);
-        localStorage.setItem('user', JSON.stringify(userData.user));
-        setUser(userData.user);
-        toast.success(`Welcome ${userData.user.name}!`);
-        navigate('/dancer');
+        // Check if password change is required
+        const needsPasswordChange = requiresPasswordChange || response.data.user?.requiresPasswordChange;
+        
+        if (needsPasswordChange) {
+          // Store token in localStorage so password change endpoint can use it
+          localStorage.setItem('token', response.data.token);
+          // Store login data temporarily, show password change UI
+          setTempUserData(response.data);
+          setShowVerification(false);
+          setShowPasswordChange(true);
+          setLoading(false);
+        } else {
+          // No password change required, complete login normally
+          const userData = response.data;
+          localStorage.setItem('token', userData.token);
+          localStorage.setItem('user', JSON.stringify(userData.user));
+          setUser(userData.user);
+          toast.success(`Welcome ${userData.user.name}!`);
+          navigate('/dancer');
+        }
       } catch (error: any) {
         console.error('Login completion error:', error);
         toast.error(error.response?.data?.error || 'Failed to complete login. Please try again.');
@@ -183,6 +218,61 @@ const DancerLogin: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const handlePasswordChangeComplete = async (success: boolean) => {
+    if (success && tempUserData) {
+      // Password changed successfully, complete login
+      try {
+        const userData = tempUserData;
+        localStorage.setItem('token', userData.token);
+        localStorage.setItem('user', JSON.stringify(userData.user));
+        setUser(userData.user);
+        toast.success(`Welcome ${userData.user.name}!`);
+        setShowPasswordChange(false);
+        setTempUserData(null);
+        navigate('/dancer');
+      } catch (error: any) {
+        console.error('Error completing login after password change:', error);
+        toast.error('Password changed, but login failed. Please log in again with your new password.');
+        setShowPasswordChange(false);
+        setLoading(false);
+        setPassword('');
+        setShowVerification(false);
+      }
+    } else {
+      // Password change failed or cancelled
+      setShowPasswordChange(false);
+      setLoading(false);
+      setShowVerification(false);
+    }
+  };
+
+  // Show password change UI if required
+  if (showPasswordChange) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <h1 className="login-title">{clubName}</h1>
+          <p style={{ textAlign: 'center', color: '#8b7fb8', marginBottom: '1rem', fontSize: '1rem', fontWeight: '600' }}>
+            Dancer Portal
+          </p>
+          <PasswordChange
+            email={email}
+            userType="dancer"
+            currentPassword={password}
+            clubId={clubId}
+            onPasswordChanged={handlePasswordChangeComplete}
+            onCancel={() => {
+              setShowPasswordChange(false);
+              setShowVerification(false);
+              setPassword('');
+              setLoading(false);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // Show verification code input if verification is required
   if (showVerification) {
