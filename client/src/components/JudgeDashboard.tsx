@@ -583,7 +583,7 @@ const JudgeDashboard: React.FC = () => {
                   <div style={{ marginBottom: '1rem' }}>
                     <video
                       controls
-                      src={groupVideo[selectedGroup] || undefined}
+                      src={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}${groupVideo[selectedGroup]}`}
                       style={{
                         width: '100%',
                         maxWidth: '400px',
