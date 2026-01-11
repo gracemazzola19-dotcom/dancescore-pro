@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 import VerificationCode from './VerificationCode';
 import PasswordChange from './PasswordChange';
+import ForgotPassword from './ForgotPassword';
 
 const DancerLogin: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -14,6 +15,7 @@ const DancerLogin: React.FC = () => {
   const [clubId, setClubId] = useState('msu-dance-club');
   const [showVerification, setShowVerification] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [tempUserData, setTempUserData] = useState<any>(null);
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [codeExpiry, setCodeExpiry] = useState(600);
@@ -247,6 +249,34 @@ const DancerLogin: React.FC = () => {
     }
   };
 
+  // Show forgot password UI
+  if (showForgotPassword) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <h1 className="login-title">{clubName}</h1>
+          <p style={{ textAlign: 'center', color: '#8b7fb8', marginBottom: '1rem', fontSize: '1rem', fontWeight: '600' }}>
+            Dancer Portal
+          </p>
+          <ForgotPassword
+            userType="dancer"
+            clubId={clubId}
+            onBack={() => {
+              setShowForgotPassword(false);
+              setEmail('');
+              setPassword('');
+            }}
+            onSuccess={() => {
+              setShowForgotPassword(false);
+              setEmail('');
+              setPassword('');
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Show password change UI if required
   if (showPasswordChange) {
     return (
@@ -352,6 +382,24 @@ const DancerLogin: React.FC = () => {
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>
+          
+          <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#8b7fb8',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                textDecoration: 'underline',
+                padding: 0
+              }}
+            >
+              Forgot Password?
+            </button>
+          </div>
         </form>
 
         <div style={{ 
