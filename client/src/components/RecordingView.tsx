@@ -27,20 +27,14 @@ const RecordingView: React.FC = () => {
   const [currentGroup, setCurrentGroup] = useState('');
   const [dancers, setDancers] = useState<Dancer[]>([]);
   const [groupDancers, setGroupDancers] = useState<Dancer[]>([]);
-  const [recording, setRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [clubName, setClubName] = useState<string>('MSU Dance Club');
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment'); // Default to back camera (like phone cameras)
-  const [cameraPreview, setCameraPreview] = useState(false);
   
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (auditionId) {
@@ -48,14 +42,11 @@ const RecordingView: React.FC = () => {
       fetchDancers();
     }
     fetchSettings();
+    
+    // Cleanup preview URL when component unmounts
     return () => {
-      // Cleanup: stop recording and release camera
-      if (recording) {
-        stopRecording();
-      }
-      stopCameraPreview();
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
       }
     };
   }, [auditionId]);
@@ -119,136 +110,39 @@ const RecordingView: React.FC = () => {
     }
   };
 
-  const stopCameraPreview = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      toast.error('Please select a video file');
+      return;
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+
+    // Validate file size (500MB limit)
+    const maxSize = 500 * 1024 * 1024; // 500MB
+    if (file.size > maxSize) {
+      toast.error('Video file is too large. Maximum size is 500MB');
+      return;
     }
-    setCameraPreview(false);
-  };
 
-  const startCameraPreview = async () => {
-    try {
-      // Stop existing stream if any
-      stopCameraPreview();
-      
-      // Request camera and microphone access for preview
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingMode }, // Use selected camera (back by default)
-        audio: false // Don't need audio for preview
-      });
+    setSelectedVideo(file);
 
-      streamRef.current = stream;
+    // Create preview URL
+    const url = URL.createObjectURL(file);
+    setVideoPreviewUrl(url);
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        setCameraPreview(true);
-      }
-    } catch (error) {
-      console.error('Error starting camera preview:', error);
-      toast.error('Failed to access camera. Please check permissions.');
+    // Auto-upload if group is selected
+    if (currentGroup && auditionId) {
+      uploadVideo(file);
     }
   };
 
-  const switchCamera = async () => {
-    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
-    setFacingMode(newFacingMode);
-    
-    // If camera preview is active, restart it with new camera
-    if (cameraPreview && !recording) {
-      await startCameraPreview();
-    }
-  };
-
-  const startRecording = async () => {
-    try {
-      // Stop preview stream if active
-      stopCameraPreview();
-      
-      // Request camera and microphone access for recording
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facingMode }, // Use selected camera
-        audio: true
-      });
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-
-      // Create MediaRecorder
-      const options = { mimeType: 'video/webm;codecs=vp9,opus' };
-      const recorder = new MediaRecorder(stream, options);
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        setVideoBlob(blob);
-        
-        // Stop all tracks
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-        }
-        if (videoRef.current) {
-          videoRef.current.srcObject = null;
-        }
-      };
-
-      recorder.start();
-      setMediaRecorder(recorder);
-      setRecording(true);
-      setRecordingTime(0);
-
-      // Start timer
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-
-      toast.success('Recording started');
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      toast.error('Failed to access camera/microphone. Please check permissions.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorder && recording) {
-      mediaRecorder.stop();
-      setRecording(false);
-      
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-
-      // Stop camera preview
-      stopCameraPreview();
-
-      toast.success('Recording stopped');
-    }
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleUpload = async () => {
-    if (!videoBlob || !auditionId || !currentGroup) {
-      toast.error('No video to upload or missing information');
+  const uploadVideo = async (file?: File) => {
+    const videoFile = file || selectedVideo;
+    if (!videoFile || !auditionId || !currentGroup) {
+      toast.error('Please select a video file and group');
       return;
     }
 
@@ -257,7 +151,7 @@ const RecordingView: React.FC = () => {
 
       // Create FormData
       const formData = new FormData();
-      formData.append('video', videoBlob, `recording-${Date.now()}.webm`);
+      formData.append('video', videoFile);
       formData.append('group', currentGroup);
       formData.append('dancerIds', JSON.stringify(groupDancers.map(d => d.id)));
       formData.append('description', `Video for ${currentGroup} - Dancers ${groupDancers.map(d => d.auditionNumber).join(', ')}`);
@@ -269,8 +163,16 @@ const RecordingView: React.FC = () => {
       });
 
       toast.success('Video uploaded successfully!');
-      setVideoBlob(null);
-      setRecordingTime(0);
+      
+      // Clear selection
+      setSelectedVideo(null);
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+        setVideoPreviewUrl(null);
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (error: any) {
       console.error('Error uploading video:', error);
       toast.error('Failed to upload video: ' + (error.response?.data?.error || error.message));
@@ -280,10 +182,13 @@ const RecordingView: React.FC = () => {
   };
 
   const handleCancel = () => {
-    setVideoBlob(null);
-    setRecordingTime(0);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
+    setSelectedVideo(null);
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl);
+      setVideoPreviewUrl(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -294,12 +199,12 @@ const RecordingView: React.FC = () => {
     <div className="dashboard">
       <div className="msu-header">
         <h1>{clubName}</h1>
-        <p className="subtitle">DanceScore Pro - Video Recording</p>
+        <p className="subtitle">DanceScore Pro - Video Upload</p>
       </div>
 
       <div className="dashboard-header">
         <div>
-          <h1 className="dashboard-title">Record Audition Video</h1>
+          <h1 className="dashboard-title">Upload Audition Video</h1>
           {audition && (
             <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.25rem' }}>
               {audition.name} - {new Date(audition.date).toLocaleDateString()}
@@ -336,7 +241,7 @@ const RecordingView: React.FC = () => {
             {/* Group Selection */}
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
-                Select Group to Record:
+                Select Group:
               </label>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 {groups.map(group => (
@@ -383,209 +288,138 @@ const RecordingView: React.FC = () => {
               </div>
             )}
 
-            {/* Video Preview/Recording */}
+            {/* Video Upload Section */}
             <div style={{ marginBottom: '2rem' }}>
               <div style={{
                 width: '100%',
                 maxWidth: '800px',
                 margin: '0 auto',
-                backgroundColor: '#000',
+                backgroundColor: '#f8f9fa',
                 borderRadius: '0.5rem',
-                overflow: 'hidden',
-                aspectRatio: '16/9',
-                position: 'relative'
+                padding: '2rem',
+                border: '2px dashed #dee2e6'
               }}>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain'
-                  }}
-                />
-                {!cameraPreview && !recording && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    color: 'white',
-                    textAlign: 'center',
-                    fontSize: '1.1rem'
-                  }}>
-                    <p style={{ marginBottom: '1rem' }}>Camera Preview</p>
+                {!selectedVideo ? (
+                  <div style={{ textAlign: 'center' }}>
+                    <h3 style={{ marginBottom: '1rem', color: '#495057' }}>Select Video from Your Phone</h3>
+                    <p style={{ marginBottom: '1.5rem', color: '#6c757d' }}>
+                      Use your phone's camera app to record a video, then select it here to upload
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="video/*"
+                      capture="environment"
+                      onChange={handleVideoSelect}
+                      style={{ display: 'none' }}
+                    />
                     <button
-                      onClick={startCameraPreview}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!currentGroup || uploading}
                       style={{
-                        padding: '0.75rem 1.5rem',
-                        fontSize: '1rem',
-                        backgroundColor: '#007bff',
+                        padding: '1rem 2rem',
+                        fontSize: '1.2rem',
+                        backgroundColor: currentGroup && !uploading ? '#007bff' : '#6c757d',
                         color: 'white',
                         border: 'none',
                         borderRadius: '0.5rem',
-                        cursor: 'pointer',
-                        fontWeight: '600'
+                        cursor: currentGroup && !uploading ? 'pointer' : 'not-allowed',
+                        fontWeight: '600',
+                        opacity: currentGroup && !uploading ? 1 : 0.6
                       }}
                     >
-                      Start Camera Preview
+                      {!currentGroup ? 'Select Group First' : '📹 Record or Select Video'}
                     </button>
+                    <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
+                      Maximum file size: 500MB
+                    </p>
                   </div>
-                )}
-                {!recording && cameraPreview && (
-                  <button
-                    onClick={switchCamera}
-                    style={{
-                      position: 'absolute',
-                      top: '1rem',
-                      right: '1rem',
-                      backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                      color: 'white',
-                      border: '2px solid white',
-                      borderRadius: '50%',
-                      width: '48px',
-                      height: '48px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '1.5rem',
-                      fontWeight: '600'
-                    }}
-                    title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
-                  >
-                    🔄
-                  </button>
-                )}
-                {recording && (
-                  <>
+                ) : (
+                  <div>
+                    <h3 style={{ marginBottom: '1rem', color: '#495057' }}>Video Preview</h3>
                     <div style={{
-                      position: 'absolute',
-                      top: '1rem',
-                      left: '1rem',
-                      backgroundColor: 'rgba(220, 53, 69, 0.9)',
-                      color: 'white',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.25rem',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem'
+                      width: '100%',
+                      marginBottom: '1.5rem',
+                      backgroundColor: '#000',
+                      borderRadius: '0.5rem',
+                      overflow: 'hidden',
+                      aspectRatio: '16/9'
                     }}>
-                      <div style={{
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        backgroundColor: 'white',
-                        animation: 'pulse 1s infinite'
-                      }} />
-                      REC {formatTime(recordingTime)}
+                      {videoPreviewUrl && (
+                        <video
+                          ref={videoPreviewRef}
+                          src={videoPreviewUrl}
+                          controls
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      )}
                     </div>
-                    <div style={{
-                      position: 'absolute',
-                      top: '1rem',
-                      right: '1rem',
-                      backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                      color: 'white',
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.25rem',
-                      fontSize: '0.9rem',
-                      fontWeight: '500'
-                    }}>
-                      {facingMode === 'environment' ? '📷 Back Camera' : '📱 Front Camera'}
+                    <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
+                      <p><strong>File:</strong> {selectedVideo.name}</p>
+                      <p><strong>Size:</strong> {(selectedVideo.size / (1024 * 1024)).toFixed(2)} MB</p>
+                      <p><strong>Type:</strong> {selectedVideo.type}</p>
                     </div>
-                  </>
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                      <button
+                        onClick={() => uploadVideo()}
+                        disabled={uploading || !currentGroup}
+                        style={{
+                          padding: '1rem 2rem',
+                          fontSize: '1.2rem',
+                          backgroundColor: currentGroup && !uploading ? '#28a745' : '#6c757d',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '0.5rem',
+                          cursor: currentGroup && !uploading ? 'pointer' : 'not-allowed',
+                          fontWeight: '600',
+                          opacity: currentGroup && !uploading ? 1 : 0.6
+                        }}
+                      >
+                        {uploading ? 'Uploading...' : 'Upload Video'}
+                      </button>
+                      <button
+                        onClick={handleCancel}
+                        disabled={uploading}
+                        style={{
+                          padding: '1rem 2rem',
+                          fontSize: '1.2rem',
+                          backgroundColor: '#6c757d',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '0.5rem',
+                          cursor: uploading ? 'not-allowed' : 'pointer',
+                          fontWeight: '600'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Controls */}
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginBottom: '2rem' }}>
-              {!recording && !videoBlob && (
-                <button
-                  onClick={startRecording}
-                  disabled={!currentGroup}
-                  style={{
-                    padding: '1rem 2rem',
-                    fontSize: '1.2rem',
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    cursor: currentGroup ? 'pointer' : 'not-allowed',
-                    fontWeight: '600',
-                    opacity: currentGroup ? 1 : 0.6
-                  }}
-                >
-                  Start Recording
-                </button>
-              )}
-
-              {recording && (
-                <button
-                  onClick={stopRecording}
-                  style={{
-                    padding: '1rem 2rem',
-                    fontSize: '1.2rem',
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    cursor: 'pointer',
-                    fontWeight: '600'
-                  }}
-                >
-                  Stop Recording
-                </button>
-              )}
-
-              {videoBlob && !recording && (
-                <>
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploading || !currentGroup}
-                    style={{
-                      padding: '1rem 2rem',
-                      fontSize: '1.2rem',
-                      backgroundColor: '#28a745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.5rem',
-                      cursor: (uploading || !currentGroup) ? 'not-allowed' : 'pointer',
-                      fontWeight: '600',
-                      opacity: (uploading || !currentGroup) ? 0.6 : 1
-                    }}
-                  >
-                    {uploading ? 'Uploading...' : 'Upload Video'}
-                  </button>
-                  <button
-                    onClick={handleCancel}
-                    disabled={uploading}
-                    style={{
-                      padding: '1rem 2rem',
-                      fontSize: '1.2rem',
-                      backgroundColor: '#6c757d',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '0.5rem',
-                      cursor: uploading ? 'not-allowed' : 'pointer',
-                      fontWeight: '600'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </>
-              )}
+            {/* Instructions */}
+            <div style={{
+              marginTop: '2rem',
+              padding: '1.5rem',
+              backgroundColor: '#e7f3ff',
+              borderRadius: '0.5rem',
+              border: '1px solid #b3d9ff'
+            }}>
+              <h3 style={{ marginBottom: '0.75rem', color: '#004085' }}>How to Upload Videos</h3>
+              <ol style={{ margin: 0, paddingLeft: '1.5rem', color: '#004085', lineHeight: '1.8' }}>
+                <li>Select a group above</li>
+                <li>Tap "Record or Select Video" button</li>
+                <li>Choose to record a new video or select an existing video from your phone's gallery</li>
+                <li>Review the video preview</li>
+                <li>Tap "Upload Video" to save it to the system</li>
+              </ol>
             </div>
-
-            <style>{`
-              @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
-              }
-            `}</style>
           </>
         )}
       </div>
