@@ -1325,7 +1325,7 @@ app.post('/api/auditions/:id/videos', authenticateToken, videoUpload.single('vid
     
     if (dancerIdsArray.length > 0) {
       // Update each dancer document with video reference
-      const updatePromises = dancerIdsArray.map(async (dancerId: string) => {
+      const updatePromises = dancerIdsArray.map(async (dancerId) => {
         try {
           const dancerDoc = await db.collection('dancers').doc(dancerId).get();
           if (dancerDoc.exists) {
