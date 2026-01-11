@@ -409,7 +409,8 @@ app.put('/api/settings', authenticateToken, async (req, res) => {
       videoSettings,
       notificationSettings,
       appearanceSettings,
-      systemSettings
+      systemSettings,
+      securitySettings
     } = req.body;
     
     const settingsData = {
