@@ -294,7 +294,7 @@ const AuditionDetail: React.FC = () => {
 
   const handleDownloadQRPDF = async () => {
     try {
-      const response = await api.get(`/api/qr-code/pdf?auditionId=${id}&auditionName=${encodeURIComponent(audition?.name || 'Audition')}`, {
+      const response = await api.get(`/api/export/qr-code-pdf?auditionId=${id}&auditionName=${encodeURIComponent(audition?.name || 'Audition')}`, {
         responseType: 'blob'
       });
       
