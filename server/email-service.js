@@ -21,26 +21,27 @@ function initializeEmailService() {
   }
 
   try {
-    // For Gmail, use the service option which handles authentication better
-    if (smtpHost === 'smtp.gmail.com') {
-      transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: smtpUser,
-          pass: smtpPassword.replace(/\s/g, ''), // Remove spaces from app password
-        },
-      });
-    } else {
-      transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort),
-        secure: smtpPort === '465', // true for 465, false for other ports
-        auth: {
-          user: smtpUser,
-          pass: smtpPassword,
-        },
-      });
-    }
+    // Timeout settings for Render and other cloud platforms
+    // Increased timeouts to handle slower network connections
+    const timeoutOptions = {
+      connectionTimeout: 30000, // 30 seconds for initial connection
+      greetingTimeout: 30000,   // 30 seconds for SMTP greeting
+      socketTimeout: 60000,     // 60 seconds for socket operations
+    };
+
+    // Configure transporter with timeout settings
+    // Using direct SMTP configuration for better timeout control
+    const port = parseInt(smtpPort);
+    transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: port,
+      secure: port === 465, // true for 465, false for other ports (like 587)
+      auth: {
+        user: smtpUser,
+        pass: smtpHost === 'smtp.gmail.com' ? smtpPassword.replace(/\s/g, '') : smtpPassword, // Remove spaces from Gmail app password
+      },
+      ...timeoutOptions,
+    });
 
     console.log('✅ Email service initialized successfully');
     return true;
