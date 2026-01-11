@@ -4564,6 +4564,14 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
     const clubId = getClubId(req);
     const { dancerId, scores, judgeId, comments, auditionId } = req.body;
     
+    // Validate required fields
+    if (!dancerId) {
+      return res.status(400).json({ error: 'dancerId is required' });
+    }
+    if (!scores || typeof scores !== 'object') {
+      return res.status(400).json({ error: 'scores object is required' });
+    }
+    
     console.log(`Judge ${req.user.id} submitting scores for dancer ${dancerId}:`, scores);
     
     // Verify dancer belongs to user's club (security check)
