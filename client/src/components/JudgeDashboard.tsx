@@ -59,9 +59,12 @@ const JudgeDashboard: React.FC = () => {
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [groupVideo, setGroupVideo] = useState<{ [group: string]: string | null }>({});
+  const [saveStatus, setSaveStatus] = useState<{ [dancerId: string]: 'saving' | 'saved' | 'error' | null }>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
+  const autoSaveTimeouts = useRef<{ [dancerId: string]: NodeJS.Timeout }>({});
+  const pendingSaves = useRef<{ [dancerId: string]: boolean }>({});
 
   useEffect(() => {
     fetchDancers();
@@ -273,6 +276,62 @@ const JudgeDashboard: React.FC = () => {
     }
   };
 
+  // Auto-save draft scores with debouncing
+  const autoSaveDraft = async (dancerId: string, scoreData: DancerScore) => {
+    try {
+      setSaveStatus(prev => ({ ...prev, [dancerId]: 'saving' }));
+      pendingSaves.current[dancerId] = true;
+      
+      const currentAuditionId = currentAudition?.id || null;
+      await api.put(`/api/scores/draft/${dancerId}`, {
+        scores: scoreData.scores,
+        comments: scoreData.comments,
+        auditionId: currentAuditionId
+      });
+      
+      setSaveStatus(prev => ({ ...prev, [dancerId]: 'saved' }));
+      pendingSaves.current[dancerId] = false;
+      
+      // Clear saved status after 2 seconds
+      setTimeout(() => {
+        setSaveStatus(prev => {
+          const updated = { ...prev };
+          if (updated[dancerId] === 'saved') {
+            updated[dancerId] = null;
+          }
+          return updated;
+        });
+      }, 2000);
+      
+      // Save to localStorage as backup
+      try {
+        const backup = {
+          scores: { [dancerId]: scoreData },
+          timestamp: Date.now()
+        };
+        const existingBackup = localStorage.getItem(`judge_scores_backup_${user?.id}`);
+        if (existingBackup) {
+          const parsed = JSON.parse(existingBackup);
+          backup.scores = { ...parsed.scores, ...backup.scores };
+        }
+        localStorage.setItem(`judge_scores_backup_${user?.id}`, JSON.stringify(backup));
+      } catch (error) {
+        console.error('Error saving to localStorage:', error);
+      }
+    } catch (error: any) {
+      console.error('Auto-save error:', error);
+      setSaveStatus(prev => ({ ...prev, [dancerId]: 'error' }));
+      pendingSaves.current[dancerId] = false;
+      
+      // Retry after 5 seconds
+      setTimeout(() => {
+        if (pendingSaves.current[dancerId] !== true) {
+          autoSaveDraft(dancerId, scoreData);
+        }
+      }, 5000);
+    }
+  };
+
   const handleScoreChange = (dancerId: string, category: keyof Score, value: number) => {
     setScores(prev => {
       const existingScore = prev[dancerId];
@@ -285,24 +344,39 @@ const JudgeDashboard: React.FC = () => {
         technique: 0
       };
       
+      const updatedScore: DancerScore = {
+        dancerId,
+        scores: {
+          ...existingScores,
+          [category]: value
+        },
+        comments: existingScore?.comments || ''
+      };
+      
+      // Clear existing timeout for this dancer
+      if (autoSaveTimeouts.current[dancerId]) {
+        clearTimeout(autoSaveTimeouts.current[dancerId]);
+      }
+      
+      // Set new timeout for auto-save (2 seconds after last change)
+      autoSaveTimeouts.current[dancerId] = setTimeout(() => {
+        // Only auto-save if scores are not already submitted
+        if (!submissionStatus[dancerId]?.submitted) {
+          autoSaveDraft(dancerId, updatedScore);
+        }
+        delete autoSaveTimeouts.current[dancerId];
+      }, 2000);
+      
       return {
         ...prev,
-        [dancerId]: {
-          dancerId,
-          scores: {
-            ...existingScores,
-            [category]: value
-          },
-          comments: existingScore?.comments || ''
-        }
+        [dancerId]: updatedScore
       };
     });
   };
 
   const handleCommentsChange = (dancerId: string, comments: string) => {
-    setScores(prev => ({
-      ...prev,
-      [dancerId]: {
+    setScores(prev => {
+      const updatedScore: DancerScore = {
         ...prev[dancerId],
         dancerId,
         scores: prev[dancerId]?.scores || {
@@ -314,8 +388,27 @@ const JudgeDashboard: React.FC = () => {
           technique: 0
         },
         comments
+      };
+      
+      // Clear existing timeout for this dancer
+      if (autoSaveTimeouts.current[dancerId]) {
+        clearTimeout(autoSaveTimeouts.current[dancerId]);
       }
-    }));
+      
+      // Set new timeout for auto-save (2 seconds after last change)
+      autoSaveTimeouts.current[dancerId] = setTimeout(() => {
+        // Only auto-save if scores are not already submitted
+        if (!submissionStatus[dancerId]?.submitted) {
+          autoSaveDraft(dancerId, updatedScore);
+        }
+        delete autoSaveTimeouts.current[dancerId];
+      }, 2000);
+      
+      return {
+        ...prev,
+        [dancerId]: updatedScore
+      };
+    });
   };
 
   const handleCheckboxChange = (dancerId: string, category: keyof Score, criteriaId: string, checked: boolean) => {
@@ -409,10 +502,38 @@ const JudgeDashboard: React.FC = () => {
         return;
       }
       
+      // Clear any pending auto-save for this dancer
+      if (autoSaveTimeouts.current[dancerId]) {
+        clearTimeout(autoSaveTimeouts.current[dancerId]);
+        delete autoSaveTimeouts.current[dancerId];
+      }
+      
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const response = await api.post('/api/scores', scoreData);
       
       toast.success(`Scores submitted for ${currentDancers.find(d => d.id === dancerId)?.name || 'dancer'}!`);
+      
+      // Clear save status
+      setSaveStatus(prev => {
+        const updated = { ...prev };
+        delete updated[dancerId];
+        return updated;
+      });
+      
+      // Clear localStorage backup for this dancer
+      try {
+        const backupKey = `judge_scores_backup_${user?.id}`;
+        const savedBackup = localStorage.getItem(backupKey);
+        if (savedBackup) {
+          const parsed = JSON.parse(savedBackup);
+          if (parsed.scores && parsed.scores[dancerId]) {
+            delete parsed.scores[dancerId];
+            localStorage.setItem(backupKey, JSON.stringify(parsed));
+          }
+        }
+      } catch (error) {
+        console.error('Error clearing backup:', error);
+      }
       
       // Update submission status for this dancer only
       setSubmissionStatus(prev => {
@@ -1065,12 +1186,23 @@ const JudgeDashboard: React.FC = () => {
                           </div>
                         ) : submissionStatus[dancer.id]?.hasScores ? (
                           <div className="submission-status draft">
-                            <div className="status-indicator" style={{ 
-                              color: '#f0ad4e', 
-                              fontWeight: '600',
-                              fontSize: '0.9rem'
-                            }}>
-                              DRAFT
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                              <div className="status-indicator" style={{ 
+                                color: '#f0ad4e', 
+                                fontWeight: '600',
+                                fontSize: '0.9rem'
+                              }}>
+                                DRAFT
+                              </div>
+                              {saveStatus[dancer.id] === 'saving' && (
+                                <span style={{ fontSize: '0.75rem', color: '#007bff' }}>💾 Saving...</span>
+                              )}
+                              {saveStatus[dancer.id] === 'saved' && (
+                                <span style={{ fontSize: '0.75rem', color: '#28a745' }}>✅ Saved</span>
+                              )}
+                              {saveStatus[dancer.id] === 'error' && (
+                                <span style={{ fontSize: '0.75rem', color: '#dc3545' }}>⚠️ Save failed</span>
+                              )}
                             </div>
                             <button
                               className="submit-button"
@@ -1082,12 +1214,23 @@ const JudgeDashboard: React.FC = () => {
                           </div>
                         ) : (
                           <div className="submission-status empty">
-                            <div className="status-indicator" style={{ 
-                              color: '#6c757d', 
-                              fontWeight: '600',
-                              fontSize: '0.9rem'
-                            }}>
-                              NOT SCORED
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                              <div className="status-indicator" style={{ 
+                                color: '#6c757d', 
+                                fontWeight: '600',
+                                fontSize: '0.9rem'
+                              }}>
+                                NOT SCORED
+                              </div>
+                              {saveStatus[dancer.id] === 'saving' && (
+                                <span style={{ fontSize: '0.75rem', color: '#007bff' }}>💾 Saving...</span>
+                              )}
+                              {saveStatus[dancer.id] === 'saved' && (
+                                <span style={{ fontSize: '0.75rem', color: '#28a745' }}>✅ Saved</span>
+                              )}
+                              {saveStatus[dancer.id] === 'error' && (
+                                <span style={{ fontSize: '0.75rem', color: '#dc3545' }}>⚠️ Save failed</span>
+                              )}
                             </div>
                             <button
                               className="submit-button"

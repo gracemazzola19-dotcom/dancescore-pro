@@ -4631,6 +4631,85 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
   }
 });
 
+// Auto-save draft scores (saves as draft, not submitted)
+app.put('/api/scores/draft/:dancerId', authenticateToken, async (req, res) => {
+  try {
+    const { dancerId } = req.params;
+    const clubId = getClubId(req);
+    const { scores: scoreValues, comments, auditionId } = req.body;
+    
+    console.log(`Judge ${req.user.id} auto-saving draft scores for dancer ${dancerId}`);
+    
+    // Verify dancer belongs to user's club
+    const dancerDoc = await db.collection('dancers').doc(dancerId).get();
+    if (!dancerDoc.exists) {
+      return res.status(404).json({ error: 'Dancer not found' });
+    }
+    
+    const dancerData = dancerDoc.data();
+    if (dancerData.clubId && dancerData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Dancer belongs to a different club' });
+    }
+    
+    // Check for existing score (draft or submitted)
+    const existingScoresSnapshot = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .where('dancerId', '==', dancerId)
+      .where('judgeId', '==', req.user.id)
+      .get();
+    
+    const scoreData = {
+      dancerId,
+      auditionId: auditionId || dancerData.auditionId || null,
+      clubId: clubId,
+      judgeId: req.user.id,
+      judgeName: req.user.name || req.user.email || req.user.id,
+      scores: {
+        kick: scoreValues?.kick || 0,
+        jump: scoreValues?.jump || 0,
+        turn: scoreValues?.turn || 0,
+        performance: scoreValues?.performance || 0,
+        execution: scoreValues?.execution || 0,
+        technique: scoreValues?.technique || 0
+      },
+      comments: comments || '',
+      submitted: false, // Always save as draft
+      timestamp: new Date(),
+      lastSaved: new Date() // Track when last auto-saved
+    };
+    
+    if (!existingScoresSnapshot.empty) {
+      // Update existing score (preserve submitted status if it was submitted)
+      const existingDoc = existingScoresSnapshot.docs[0];
+      const existingData = existingDoc.data();
+      
+      // Only update if not already submitted (don't overwrite submitted scores)
+      if (!existingData.submitted) {
+        await existingDoc.ref.update(scoreData);
+        console.log(`✅ Draft score auto-saved for dancer ${dancerId}`);
+        return res.json({ id: existingDoc.id, ...scoreData, message: 'Draft saved' });
+      } else {
+        // Already submitted, don't overwrite
+        return res.json({ id: existingDoc.id, ...existingData, message: 'Already submitted, cannot save draft' });
+      }
+    } else {
+      // Create new draft score
+      const docRef = await db.collection('scores').add(scoreData);
+      console.log(`✅ New draft score created for dancer ${dancerId}`);
+      
+      // Update dancer's scores array
+      await db.collection('dancers').doc(dancerId).update({
+        scores: admin.firestore.FieldValue.arrayUnion(docRef.id)
+      });
+      
+      return res.json({ id: docRef.id, ...scoreData, message: 'Draft saved' });
+    }
+  } catch (error) {
+    console.error('Error auto-saving draft scores:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Unsubmit scores route
 app.put('/api/scores/unsubmit/:dancerId', authenticateToken, async (req, res) => {
   try {
