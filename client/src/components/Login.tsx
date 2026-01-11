@@ -243,11 +243,12 @@ const Login: React.FC = () => {
     setUser(user);
     
     if (isCoordinator) {
-      // Coordinator - go directly to Coordinator Dashboard (read-only attendance, absence requests, make-up)
-      toast.success(`Welcome ${user.name}!`);
-      setTimeout(() => {
-        window.location.href = '/coordinator';
-      }, 100);
+      // Coordinator - show view selection (Coordinator Dashboard OR Judge Dashboard)
+      setAvailableViews(['coordinator', 'judge']);
+      setSelectedView('coordinator'); // Default to coordinator
+      setTempUserData(userData);
+      setShowViewSelection(true);
+      setLoading(false);
     } else if (canAccessAdmin) {
       // Admin/Secretary - show view selection (Admin Dashboard OR Judge Dashboard)
       setAvailableViews(['admin', 'judge']);
@@ -273,13 +274,16 @@ const Login: React.FC = () => {
       if (selectedView === 'admin') {
         toast.success(`Welcome ${userName}!`);
         navigate('/admin');
+      } else if (selectedView === 'coordinator') {
+        toast.success(`Welcome ${userName}!`);
+        navigate('/coordinator');
       } else if (selectedView === 'judge') {
         toast.success(`Welcome ${userName}!`);
         navigate('/judge');
       } else {
-        // Default to admin
+        // Default to judge if no view selected
         toast.success(`Welcome ${userName}!`);
-        navigate('/admin');
+        navigate('/judge');
       }
     } catch (error) {
       toast.error('Failed to load dashboard. Please try again.');
@@ -393,7 +397,107 @@ const Login: React.FC = () => {
             }}
             expiresIn={codeExpiry}
           />
-        ) : !showViewSelection ? (
+        ) : showViewSelection ? (
+          // Step 2.8: View Selection (Admin/Coordinator choose between their dashboard and Judge)
+          <div>
+            <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#333' }}>
+              Select Dashboard
+            </h2>
+            <p style={{ textAlign: 'center', color: '#666', marginBottom: '2rem', fontSize: '0.95rem' }}>
+              Choose which dashboard you'd like to access:
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+              {availableViews.includes('admin') && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedView('admin')}
+                  className="login-button"
+                  style={{
+                    background: selectedView === 'admin' 
+                      ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+                      : 'white',
+                    color: selectedView === 'admin' ? 'white' : '#667eea',
+                    border: `2px solid ${selectedView === 'admin' ? 'transparent' : '#667eea'}`
+                  }}
+                >
+                  Admin Dashboard
+                </button>
+              )}
+              
+              {availableViews.includes('coordinator') && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedView('coordinator')}
+                  className="login-button"
+                  style={{
+                    background: selectedView === 'coordinator' 
+                      ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+                      : 'white',
+                    color: selectedView === 'coordinator' ? 'white' : '#667eea',
+                    border: `2px solid ${selectedView === 'coordinator' ? 'transparent' : '#667eea'}`
+                  }}
+                >
+                  Coordinator Dashboard
+                </button>
+              )}
+              
+              <button
+                type="button"
+                onClick={() => setSelectedView('judge')}
+                className="login-button"
+                style={{
+                  background: selectedView === 'judge' 
+                    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+                    : 'white',
+                  color: selectedView === 'judge' ? 'white' : '#667eea',
+                  border: `2px solid ${selectedView === 'judge' ? 'transparent' : '#667eea'}`
+                }}
+              >
+                Judge Dashboard
+              </button>
+            </div>
+            
+            <button
+              type="button"
+              onClick={handleViewSelection}
+              className="login-button"
+              style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                width: '100%'
+              }}
+            >
+              {loading ? 'Loading...' : 'Continue'}
+            </button>
+            
+            <button
+              onClick={() => {
+                setShowViewSelection(false);
+                setTempUserData(null);
+                setEmail('');
+                setPassword('');
+                setSelectedRoleType(null);
+                setAvailableViews([]);
+                setSelectedView('judge');
+              }}
+              style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                width: '100%',
+                borderRadius: '0.5rem',
+                border: '2px solid #d4c5f9',
+                backgroundColor: 'white',
+                color: '#8b7fb8',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              Back to Login
+            </button>
+          </div>
+        ) : (
           // Step 2: Login Form
           <form onSubmit={handleLoginSubmit}>
             <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
