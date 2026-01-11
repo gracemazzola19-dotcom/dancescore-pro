@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 5001; // Match client proxy configuration
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Increased limit for base64 file uploads
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
@@ -2836,8 +2836,9 @@ app.post('/api/make-up-submissions', async (req, res) => {
   try {
     const { absenceRequestId, eventId, dancerName, dancerLevel, makeUpUrl, sentToCoordinator } = req.body;
     
-    if (!absenceRequestId || !eventId || !dancerName || !dancerLevel) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // absenceRequestId is optional - make-up can be submitted for any missed practice
+    if (!eventId || !dancerName || !dancerLevel) {
+      return res.status(400).json({ error: 'Missing required fields: eventId, dancerName, and dancerLevel are required' });
     }
     
     // Get clubId from event
@@ -2850,7 +2851,7 @@ app.post('/api/make-up-submissions', async (req, res) => {
     const clubId = eventData.clubId || 'msu-dance-club'; // Get clubId from event
     
     const makeUpData = {
-      absenceRequestId,
+      absenceRequestId: absenceRequestId || null, // Optional - make-up can be submitted without a request
       eventId,
       clubId: clubId, // Multi-tenant: get clubId from event
       dancerName,
@@ -3139,77 +3140,83 @@ app.put('/api/make-up-submissions/:id', authenticateToken, async (req, res) => {
       status: approved ? 'approved' : 'denied'
     });
     
-    // If approved, update the corresponding absence request's attendance record to award points back
-    if (approved && submission.absenceRequestId) {
-      const absenceDoc = await db.collection('absence_requests').doc(submission.absenceRequestId).get();
-      if (absenceDoc.exists) {
-        const absenceData = absenceDoc.data();
-        
-        // Find the attendance record
-        const membersSnapshot = await db.collection('club_members')
-          .where('name', '==', submission.dancerName)
-          .where('level', '==', submission.dancerLevel)
-          .limit(1)
+    // If approved, update the corresponding attendance record to award points back
+    // This works even if there's no absence request (make-up can be submitted without a request)
+    if (approved) {
+      // Try to get absence request if it exists (optional)
+      let absenceData = null;
+      if (submission.absenceRequestId) {
+        const absenceDoc = await db.collection('absence_requests').doc(submission.absenceRequestId).get();
+        if (absenceDoc.exists) {
+          absenceData = absenceDoc.data();
+        }
+      }
+      
+      // Find the attendance record
+      const membersSnapshot = await db.collection('club_members')
+        .where('name', '==', submission.dancerName)
+        .where('level', '==', submission.dancerLevel)
+        .where('clubId', '==', clubId)
+        .limit(1)
+        .get();
+      
+      let dancerId = null;
+      if (!membersSnapshot.empty) {
+        dancerId = membersSnapshot.docs[0].id;
+      }
+      
+      let attendanceRecords;
+      if (dancerId) {
+        attendanceRecords = await db.collection('attendance_records')
+          .where('clubId', '==', clubId)
+          .where('eventId', '==', submission.eventId)
+          .where('dancerId', '==', dancerId)
           .get();
-        
-        let dancerId = null;
-        if (!membersSnapshot.empty) {
-          dancerId = membersSnapshot.docs[0].id;
-        }
-        
-        let attendanceRecords;
-        if (dancerId) {
-          attendanceRecords = await db.collection('attendance_records')
-            .where('clubId', '==', clubId)
-            .where('eventId', '==', submission.eventId)
-            .where('dancerId', '==', dancerId)
-            .get();
-        } else {
-          attendanceRecords = await db.collection('attendance_records')
-            .where('clubId', '==', clubId)
-            .where('eventId', '==', submission.eventId)
-            .where('dancerName', '==', submission.dancerName)
-            .where('dancerLevel', '==', submission.dancerLevel)
-            .get();
-        }
-        
-        // Calculate points to award based on original absence type
-        let pointsToAward = pointsAwarded || 0;
-        
-        // Update attendance record with make-up points
-        const recordData = {
-          makeUpApproved: true,
-          makeUpPoints: pointsToAward,
-          makeUpReviewedAt: new Date(),
-          makeUpReviewedBy: req.user?.email || 'admin'
+      } else {
+        attendanceRecords = await db.collection('attendance_records')
+          .where('clubId', '==', clubId)
+          .where('eventId', '==', submission.eventId)
+          .where('dancerName', '==', submission.dancerName)
+          .where('dancerLevel', '==', submission.dancerLevel)
+          .get();
+      }
+      
+      // Calculate points to award based on original absence type (if available) or use provided points
+      let pointsToAward = pointsAwarded || 0;
+      
+      // Update attendance record with make-up points
+      const recordData = {
+        makeUpApproved: true,
+        makeUpPoints: pointsToAward,
+        makeUpReviewedAt: new Date(),
+        makeUpReviewedBy: req.user?.email || 'admin'
+      };
+      
+      if (attendanceRecords.empty) {
+        // Create new record with make-up info
+        const newRecordData = {
+          eventId: submission.eventId,
+          clubId: clubId, // Multi-tenant: ensure clubId is set
+          dancerName: submission.dancerName,
+          dancerLevel: submission.dancerLevel,
+          status: 'make-up-approved',
+          points: pointsToAward,
+          recordedAt: new Date(),
+          recordedBy: 'admin',
+          makeUpSubmissionId: id,
+          ...recordData
         };
-        
-        if (attendanceRecords.empty) {
-          // Create new record with make-up info
-          const newRecordData = {
-            eventId: submission.eventId,
-            clubId: clubId, // Multi-tenant: ensure clubId is set
-            dancerName: submission.dancerName,
-            dancerLevel: submission.dancerLevel,
-            status: 'make-up-approved',
-            points: pointsToAward,
-            recordedAt: new Date(),
-            recordedBy: 'admin',
-            makeUpSubmissionId: id,
-            ...recordData
-          };
-          if (dancerId) {
-            newRecordData.dancerId = dancerId;
-          }
-          await db.collection('attendance_records').add(newRecordData);
-        } else {
-          // Update existing record
-          const recordId = attendanceRecords.docs[0].id;
-          await db.collection('attendance_records').doc(recordId).update({
-            ...recordData,
-            updatedAt: new Date()
-          });
+        if (dancerId) {
+          newRecordData.dancerId = dancerId;
         }
+        await db.collection('attendance_records').add(newRecordData);
+      } else {
+        // Update existing record
+        const recordId = attendanceRecords.docs[0].id;
+        await db.collection('attendance_records').doc(recordId).update({
+          ...recordData,
+          updatedAt: new Date()
+        });
       }
     }
     

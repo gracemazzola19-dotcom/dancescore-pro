@@ -206,20 +206,67 @@ const DancerAttendance: React.FC = () => {
       return;
     }
 
+    if (!makeUpFile && !makeUpUrl) {
+      toast.error('Please select a file for your make-up work');
+      return;
+    }
+
+    // Validate required fields
+    if (!dancer?.name || !dancer?.level) {
+      toast.error('Missing dancer information. Please refresh the page and try again.');
+      return;
+    }
+
+    if (!selectedEventId) {
+      toast.error('Missing event information. Please try again.');
+      return;
+    }
+
     try {
       setSubmittingMakeUp(true);
-      const request = getRequestForEvent(selectedEventId);
-      if (!request) {
-        toast.error('No absence request found for this event');
+      
+      // Wait for file to be converted to base64 if needed
+      let finalMakeUpUrl = makeUpUrl;
+      if (makeUpFile && !makeUpUrl) {
+        // File is selected but not yet converted - convert it now
+        finalMakeUpUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result as string);
+          };
+          reader.onerror = () => {
+            reject(new Error('Failed to read file'));
+          };
+          reader.readAsDataURL(makeUpFile);
+        });
+      }
+
+      if (!finalMakeUpUrl) {
+        toast.error('Please select a file for your make-up work');
+        setSubmittingMakeUp(false);
         return;
       }
 
-      await api.post('/api/make-up-submissions', {
-        absenceRequestId: request.id,
+      // Check file size (base64 is ~33% larger than original)
+      // Warn if file is very large (>10MB original = ~13MB base64)
+      if (makeUpFile && makeUpFile.size > 10 * 1024 * 1024) {
+        const base64Size = finalMakeUpUrl.length * 0.75; // Approximate original size
+        if (base64Size > 40 * 1024 * 1024) {
+          toast.error('File is too large. Please use a file smaller than 10MB.');
+          setSubmittingMakeUp(false);
+          return;
+        }
+      }
+
+      // Get request if it exists (optional - make-up can be submitted without a request)
+      const request = getRequestForEvent(selectedEventId);
+
+      const response = await api.post('/api/make-up-submissions', {
+        absenceRequestId: request?.id || null, // Optional - can be null if no request exists
         eventId: selectedEventId,
-        dancerName: dancer?.name,
-        dancerLevel: dancer?.level,
-        makeUpUrl: makeUpUrl,
+        dancerName: dancer.name,
+        dancerLevel: dancer.level,
+        makeUpUrl: finalMakeUpUrl,
         sentToCoordinator: sentToCoordinator
       });
 
@@ -229,9 +276,31 @@ const DancerAttendance: React.FC = () => {
       setMakeUpUrl('');
       setSentToCoordinator(false);
       fetchAttendanceData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting make-up:', error);
-      toast.error('Failed to submit make-up work');
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        config: error.config
+      });
+      
+      // Show detailed error message
+      let errorMessage = 'Failed to submit make-up work';
+      if (error.response?.status === 413) {
+        errorMessage = 'File is too large. Please use a smaller file (under 10MB) or the site needs to be redeployed with the fix.';
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.status) {
+        errorMessage = `Server error (${error.response.status})`;
+      }
+      
+      console.error('Error message to show:', errorMessage);
+      toast.error(errorMessage);
     } finally {
       setSubmittingMakeUp(false);
     }
@@ -478,7 +547,7 @@ const DancerAttendance: React.FC = () => {
                              request.status === 'approved' ? 'Approved' :
                              'Denied'}
                           </span>
-                          {/* Show make-up button for any missing practice that has been requested (approved, denied, or pending) */}
+                          {/* Show make-up button for any missing practice (with or without request) */}
                           {isAbsent && (
                             <button
                               onClick={() => handleOpenMakeUpModal(event.id, event.name)}
@@ -498,21 +567,39 @@ const DancerAttendance: React.FC = () => {
                           )}
                         </>
                       ) : isAbsent ? (
-                        <a
-                          href={`/absence/${event.id}?name=${encodeURIComponent(dancer?.name || '')}&level=${encodeURIComponent(dancer?.level || '')}`}
-                          style={{
-                            backgroundColor: '#007bff',
-                            color: 'white',
-                            padding: '0.5rem 1rem',
-                            borderRadius: '0.25rem',
-                            fontSize: '0.9rem',
-                            textDecoration: 'none',
-                            fontWeight: '600',
-                            display: 'inline-block'
-                          }}
-                        >
-                          Request Excuse
-                        </a>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                          <a
+                            href={`/absence/${event.id}?name=${encodeURIComponent(dancer?.name || '')}&level=${encodeURIComponent(dancer?.level || '')}`}
+                            style={{
+                              backgroundColor: '#007bff',
+                              color: 'white',
+                              padding: '0.5rem 1rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.9rem',
+                              textDecoration: 'none',
+                              fontWeight: '600',
+                              display: 'inline-block'
+                            }}
+                          >
+                            Request Excuse
+                          </a>
+                          {/* Show make-up button even without a request - for any missed practice */}
+                          <button
+                            onClick={() => handleOpenMakeUpModal(event.id, event.name)}
+                            style={{
+                              backgroundColor: '#28a745',
+                              color: 'white',
+                              padding: '0.5rem 1rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.85rem',
+                              fontWeight: '600',
+                              border: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Submit Make-Up
+                          </button>
+                        </div>
                       ) : null}
                     </div>
                   </div>
