@@ -11,6 +11,7 @@ const QRCode = require('qrcode');
 const admin = require('firebase-admin');
 const emailService = require('./email-service');
 const NodeCache = require('node-cache');
+const rateLimit = require('express-rate-limit');
 
 dotenv.config();
 
@@ -23,9 +24,19 @@ const cache = new NodeCache({ stdTTL: 30, checkperiod: 60, useClones: false });
 const app = express();
 const PORT = process.env.PORT || 5001; // Match client proxy configuration
 
+// Rate limiting middleware (100 requests per minute per IP)
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increased limit for base64 file uploads
+app.use('/api/', limiter); // Apply rate limiting to all API routes
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
