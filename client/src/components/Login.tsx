@@ -225,7 +225,21 @@ const Login: React.FC = () => {
   };
 
   const completeLogin = async (userData: any) => {
-    if (selectedRoleType === 'admin') {
+    // Check if user is a coordinator (position contains "Coordinator")
+    const isCoordinator = userData.user?.isCoordinator || 
+                         (userData.user?.position && userData.user.position.includes('Coordinator'));
+    
+    if (isCoordinator) {
+      // Coordinator login - go directly to Coordinator Dashboard (read-only attendance, absence requests, make-up)
+      localStorage.setItem('token', userData.token);
+      localStorage.setItem('user', JSON.stringify(userData.user));
+      setUser(userData.user);
+      toast.success(`Welcome ${userData.user.name}!`);
+      // Use setTimeout to ensure state updates before navigation
+      setTimeout(() => {
+        window.location.href = '/coordinator';
+      }, 100);
+    } else if (selectedRoleType === 'admin') {
       // Admin login - show view selection (Admin Dashboard OR Judge Dashboard)
       localStorage.setItem('token', userData.token);
       localStorage.setItem('user', JSON.stringify(userData.user));

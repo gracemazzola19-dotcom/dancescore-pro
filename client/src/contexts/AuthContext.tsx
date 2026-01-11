@@ -10,6 +10,7 @@ interface User {
   level?: string; // For dancers
   clubId?: string; // Multi-tenant: club identifier
   canAccessAdmin?: boolean;
+  isCoordinator?: boolean; // Flag to indicate coordinator position
 }
 
 interface AuthContextType {

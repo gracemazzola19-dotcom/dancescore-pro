@@ -82,6 +82,15 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode; role: s
     return <>{children}</>;
   }
   
+  // Allow coordinators (users with position containing "Coordinator") to access coordinator routes
+  const isCoordinatorRoute = role === 'coordinator';
+  const isCoordinator = user.position && user.position.includes('Coordinator');
+  
+  if (isCoordinatorRoute && isCoordinator) {
+    console.log('ProtectedRoute: Allowing coordinator access');
+    return <>{children}</>;
+  }
+  
   console.log('ProtectedRoute: Role mismatch, redirecting. Expected:', role, 'Got:', user.role);
   if (user.role !== role) {
     if (role === 'dancer') return <Navigate to="/dancer-login" />;

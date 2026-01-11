@@ -2340,6 +2340,9 @@ app.post('/api/auth/login', async (req, res) => {
     // Security checks - secretary and admin can access admin features
     const canAccessAdmin = judge.role === 'admin' || judge.role === 'secretary';
     
+    // Check if user is a coordinator (position contains "Coordinator")
+    const isCoordinator = judge.position && judge.position.includes('Coordinator');
+    
     if (selectedRole === 'admin' && !canAccessAdmin) {
       console.log('User tried to access admin role without permission:', email);
       return res.status(403).json({ error: 'Insufficient permissions' });
@@ -2350,7 +2353,7 @@ app.post('/api/auth/login', async (req, res) => {
       // Don't force role, let the frontend decide via canAccessAdmin flag
     }
     
-    console.log('✅ Login successful:', { email, role: roleToUse, name: judge.name, clubId, canAccessAdmin, requiresPasswordChange });
+    console.log('✅ Login successful:', { email, role: roleToUse, name: judge.name, clubId, canAccessAdmin, isCoordinator, requiresPasswordChange });
     
     // Increment login count after successful login
     const currentLoginCount = judge.loginCount || 0;
@@ -2361,7 +2364,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     // Include clubId in JWT token for multi-tenant support
     const token = jwt.sign(
-      { id: judgeId, email, role: roleToUse, name: judge.name, clubId },
+      { id: judgeId, email, role: roleToUse, name: judge.name, clubId, position: judge.position || '' },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
@@ -2376,6 +2379,7 @@ app.post('/api/auth/login', async (req, res) => {
         position: judge.position || '',
         clubId: clubId, // Include clubId in user object
         canAccessAdmin: canAccessAdmin, // Flag to show role selector for admin and secretary
+        isCoordinator: isCoordinator, // Flag to indicate coordinator position
         requiresPasswordChange: requiresPasswordChange // Flag to show password change UI
       } 
     });
