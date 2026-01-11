@@ -64,10 +64,10 @@ function ProtectedRoute({ children, role }: { children: React.ReactNode; role: s
   
   // Allow secretary to access admin routes
   const isAdminRoute = role === 'admin';
-  const canAccessAdmin = user.role === 'admin' || user.role === 'secretary';
+  const canAccessAdmin = user.canAccessAdmin === true || user.role === 'admin' || user.role === 'secretary';
   
   if (isAdminRoute && canAccessAdmin) {
-    // Secretary and admin can access admin routes
+    // Secretary and admin can access admin routes (check canAccessAdmin flag OR role)
     console.log('ProtectedRoute: Allowing admin access');
     return <>{children}</>;
   }
