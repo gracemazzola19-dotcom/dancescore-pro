@@ -34,6 +34,8 @@ const RecordingView: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [clubName, setClubName] = useState<string>('MSU Dance Club');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment'); // Default to back camera (like phone cameras)
+  const [cameraPreview, setCameraPreview] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -51,9 +53,7 @@ const RecordingView: React.FC = () => {
       if (recording) {
         stopRecording();
       }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
+      stopCameraPreview();
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -119,11 +119,59 @@ const RecordingView: React.FC = () => {
     }
   };
 
+  const stopCameraPreview = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraPreview(false);
+  };
+
+  const startCameraPreview = async () => {
+    try {
+      // Stop existing stream if any
+      stopCameraPreview();
+      
+      // Request camera and microphone access for preview
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facingMode }, // Use selected camera (back by default)
+        audio: false // Don't need audio for preview
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        setCameraPreview(true);
+      }
+    } catch (error) {
+      console.error('Error starting camera preview:', error);
+      toast.error('Failed to access camera. Please check permissions.');
+    }
+  };
+
+  const switchCamera = async () => {
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newFacingMode);
+    
+    // If camera preview is active, restart it with new camera
+    if (cameraPreview && !recording) {
+      await startCameraPreview();
+    }
+  };
+
   const startRecording = async () => {
     try {
-      // Request camera and microphone access
+      // Stop preview stream if active
+      stopCameraPreview();
+      
+      // Request camera and microphone access for recording
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' }, // Use front camera
+        video: { facingMode: facingMode }, // Use selected camera
         audio: true
       });
 
@@ -186,12 +234,7 @@ const RecordingView: React.FC = () => {
       }
 
       // Stop camera preview
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+      stopCameraPreview();
 
       toast.success('Recording stopped');
     }
@@ -363,29 +406,97 @@ const RecordingView: React.FC = () => {
                     objectFit: 'contain'
                   }}
                 />
-                {recording && (
+                {!cameraPreview && !recording && (
                   <div style={{
                     position: 'absolute',
-                    top: '1rem',
-                    left: '1rem',
-                    backgroundColor: 'rgba(220, 53, 69, 0.9)',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
                     color: 'white',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '0.25rem',
-                    fontWeight: '600',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem'
+                    textAlign: 'center',
+                    fontSize: '1.1rem'
                   }}>
-                    <div style={{
-                      width: '12px',
-                      height: '12px',
-                      borderRadius: '50%',
-                      backgroundColor: 'white',
-                      animation: 'pulse 1s infinite'
-                    }} />
-                    REC {formatTime(recordingTime)}
+                    <p style={{ marginBottom: '1rem' }}>Camera Preview</p>
+                    <button
+                      onClick={startCameraPreview}
+                      style={{
+                        padding: '0.75rem 1.5rem',
+                        fontSize: '1rem',
+                        backgroundColor: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        cursor: 'pointer',
+                        fontWeight: '600'
+                      }}
+                    >
+                      Start Camera Preview
+                    </button>
                   </div>
+                )}
+                {!recording && cameraPreview && (
+                  <button
+                    onClick={switchCamera}
+                    style={{
+                      position: 'absolute',
+                      top: '1rem',
+                      right: '1rem',
+                      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                      color: 'white',
+                      border: '2px solid white',
+                      borderRadius: '50%',
+                      width: '48px',
+                      height: '48px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.5rem',
+                      fontWeight: '600'
+                    }}
+                    title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
+                  >
+                    🔄
+                  </button>
+                )}
+                {recording && (
+                  <>
+                    <div style={{
+                      position: 'absolute',
+                      top: '1rem',
+                      left: '1rem',
+                      backgroundColor: 'rgba(220, 53, 69, 0.9)',
+                      color: 'white',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.25rem',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <div style={{
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: 'white',
+                        animation: 'pulse 1s infinite'
+                      }} />
+                      REC {formatTime(recordingTime)}
+                    </div>
+                    <div style={{
+                      position: 'absolute',
+                      top: '1rem',
+                      right: '1rem',
+                      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                      color: 'white',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.9rem',
+                      fontWeight: '500'
+                    }}>
+                      {facingMode === 'environment' ? '📷 Back Camera' : '📱 Front Camera'}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
