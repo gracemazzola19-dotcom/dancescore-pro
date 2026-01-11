@@ -340,13 +340,40 @@ const Attendance: React.FC = () => {
     const dancer = clubMembers.find(m => m.id === dancerId);
     if (!dancer) return 0;
     
-    // Calculate points from all records for this dancer
+    // Calculate points from all records for this dancer (all events, all time)
     const dancerRecords = records.filter(r => 
       (r.dancerId === dancerId) || 
       (r.dancerName === dancer.name && r.dancerLevel === dancer.level)
     );
     
     return dancerRecords.reduce((sum, record) => sum + record.points, 0);
+  };
+
+  const getPracticePointsAvailable = () => {
+    // Sum of all practice event points values (all time)
+    return events
+      .filter(event => event.type === 'practice')
+      .reduce((sum, event) => sum + (event.pointsValue || 0), 0);
+  };
+
+  const getDancerPracticePointsEarned = (dancerId: string) => {
+    const dancer = clubMembers.find(m => m.id === dancerId);
+    if (!dancer) return 0;
+    
+    // Get all practice events
+    const practiceEventIds = events
+      .filter(event => event.type === 'practice')
+      .map(event => event.id);
+    
+    // Calculate points from practice records for this dancer
+    const dancerRecords = records.filter(r => {
+      const matchesDancer = (r.dancerId === dancerId) || 
+        (r.dancerName === dancer.name && r.dancerLevel === dancer.level);
+      const isPracticeEvent = practiceEventIds.includes(r.eventId);
+      return matchesDancer && isPracticeEvent;
+    });
+    
+    return dancerRecords.reduce((sum, record) => sum + Math.max(0, record.points), 0);
   };
 
   const generateQRCode = async (eventId: string) => {
@@ -653,7 +680,16 @@ const Attendance: React.FC = () => {
                         </th>
                       ))}
                       <th style={{ padding: '1rem', textAlign: 'center', borderBottom: '1px solid #dee2e6', backgroundColor: '#e9ecef', fontWeight: 'bold' }}>
-                        Total Points
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span>Practice Points</span>
+                          <small style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>
+                            (Earned / Available)
+                          </small>
+                        </div>
+                      </th>
+                      <th style={{ padding: '1rem', textAlign: 'center', borderBottom: '1px solid #dee2e6', backgroundColor: '#e9ecef', fontWeight: 'bold' }}>
+                        Total Points<br />
+                        <small style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>(Semester)</small>
                       </th>
                     </tr>
                   </thead>
@@ -734,6 +770,20 @@ const Attendance: React.FC = () => {
                             </td>
                           );
                         })}
+                        <td style={{ padding: '1rem', textAlign: 'center', borderBottom: '1px solid #dee2e6', backgroundColor: '#e9ecef' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'center' }}>
+                            <span style={{
+                              backgroundColor: '#007bff',
+                              color: 'white',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '0.25rem',
+                              fontWeight: 'bold',
+                              fontSize: '0.9rem'
+                            }}>
+                              {getDancerPracticePointsEarned(member.id)} / {getPracticePointsAvailable()}
+                            </span>
+                          </div>
+                        </td>
                         <td style={{ padding: '1rem', textAlign: 'center', borderBottom: '1px solid #dee2e6', backgroundColor: '#e9ecef' }}>
                           <span style={{
                             backgroundColor: getDancerTotalPoints(member.id) >= 0 ? '#28a745' : '#dc3545',
