@@ -1,0 +1,30 @@
+{
+  "name": "dancescore-pro",
+  "version": "1.0.0",
+  "description": "Digital judging platform for dance auditions",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "heroku-postbuild": "cd client && npm install && npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "dance",
+    "audition",
+    "judging",
+    "scoring"
+  ],
+  "author": "DanceScore Pro Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "firebase-tools": "^14.22.0"
+  }
+}

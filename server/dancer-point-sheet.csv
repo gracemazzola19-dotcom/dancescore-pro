@@ -1,0 +1,26 @@
+Found 20 dancers
+
+Audition Number,Name,Group,Email,Phone,Shirt Size,Previous Member,Previous Level
+1,Dancer 1,Group 1,gracemazzola19@gmail.com,7345522422,L,yes,Level 1
+10,Dancer 10,Group 2,gracemazzola19@gmail.com,7345522422,L,no,
+11,Dancer 11,Group 3,gracemazzola19@gmail.com,7345522422,XL,yes,Level 1
+12,Dancer 12,Group 3,gracemazzola19@gmail.com,7345522422,L,yes,Level 2
+13,Dancer 13,Group 3,gracemazzola19@gmail.com,7345522422,M,yes,Level 3
+14,Dancer 14,Group 3,gracemazzola19@gmail.com,7345522422,S,yes,Level 4
+15,Dancer 15,Group 3,gracemazzola19@gmail.com,7345522422,M,no,
+16,Dancer 16,Group 4,gracemazzola19@gmail.com,7345522422,XL,yes,Level 1
+17,Dancer 17,Group 4,gracemazzola19@gmail.com,7345522422,S,yes,Level 2
+18,Dancer 18,Group 4,gracemazzola19@gmail.com,7345522422,M,yes,Level 2
+19,Dancer 19,Group 4,gracemazzola19@gmail.com,7345522422,M,no,
+2,Dancer 2,Group 1,gracemazzola19@gmail.com,7345522422,M,yes,Level 2
+20,Dancer 20,Group 4,gracemazzola19@gmail.com,7345522422,L,yes,Level 3
+3,Dancer 3,Group 1,gracemazzola19@gmail.com,7345522422,S,yes,Level 3
+4,Dancer 4,Group 1,gracemazzola19@gmail.com,7345522422,L,yes,Level 4
+5,Dancer 5,Group 1,gracemazzola19@gmail.com,7345522422,XL,no,
+6,Dancer 6,Group 2,gracemazzola19@gmail.com,7345522422,S,yes,Level 1
+7,Dancer 7,Group 2,gracemazzola19@gmail.com,7345522422,L,yes,Level 3
+8,Dancer 8,Group 2,gracemazzola19@gmail.com,7345522422,S,yes,Level 4
+9,Dancer 9,Group 2,gracemazzola19@gmail.com,7345522422,M,yes,Level 4
+
+---
+Total dancers: 20
