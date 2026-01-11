@@ -57,16 +57,17 @@ const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      // Re-check verification requirements in case settings changed
+      // Re-check verification requirements with email (to check per-user login count)
       let currentVerificationRequired = verificationRequired;
       try {
         const verificationCheck = await axios.get(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/verification-required/${clubId}`
+          `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/verification-required/${clubId}?email=${encodeURIComponent(email)}`
         );
         currentVerificationRequired = verificationCheck.data.requireVerification || false;
         console.log('Verification check:', { 
           required: currentVerificationRequired, 
-          emailConfigured: verificationCheck.data.emailConfigured 
+          emailConfigured: verificationCheck.data.emailConfigured,
+          email: email
         });
       } catch (checkError) {
         console.error('Error checking verification requirements:', checkError);

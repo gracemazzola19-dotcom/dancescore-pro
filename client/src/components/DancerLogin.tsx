@@ -3,12 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import VerificationCode from './VerificationCode';
 
 const DancerLogin: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [clubName, setClubName] = useState<string>('MSU Dance Club');
+  const [clubId, setClubId] = useState('msu-dance-club');
+  const [showVerification, setShowVerification] = useState(false);
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [codeExpiry, setCodeExpiry] = useState(600);
   const { setUser } = useAuth();
   const navigate = useNavigate();
 
@@ -20,6 +25,9 @@ const DancerLogin: React.FC = () => {
         if (response.data.clubName) {
           setClubName(response.data.clubName);
         }
+        if (response.data.clubId) {
+          setClubId(response.data.clubId);
+        }
       } catch (error) {
         console.error('Error fetching club name:', error);
         // Keep default
@@ -28,22 +36,86 @@ const DancerLogin: React.FC = () => {
     fetchClubName();
   }, []);
 
+  // Check if email verification is required (will be checked per-user in handleSubmit)
+  useEffect(() => {
+    const checkVerificationRequired = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/verification-required/${clubId}`
+        );
+        setVerificationRequired(response.data.requireVerification || false);
+        setCodeExpiry(response.data.codeExpiryMinutes * 60 || 600);
+        
+        if (response.data.requireVerification && !response.data.emailConfigured) {
+          console.warn('Email verification is required but email service is not configured');
+        }
+      } catch (error) {
+        console.error('Error checking verification requirements:', error);
+        setVerificationRequired(false); // Default to false on error
+      }
+    };
+    checkVerificationRequired();
+  }, [clubId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const response = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
-        { email, password }
-      );
+      // Re-check verification requirements with email (to check per-user login count)
+      let currentVerificationRequired = verificationRequired;
+      try {
+        const verificationCheck = await axios.get(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/verification-required/${clubId}?email=${encodeURIComponent(email)}`
+        );
+        currentVerificationRequired = verificationCheck.data.requireVerification || false;
+        console.log('Verification check:', { 
+          required: currentVerificationRequired, 
+          emailConfigured: verificationCheck.data.emailConfigured,
+          email: email
+        });
+      } catch (checkError) {
+        console.error('Error checking verification requirements:', checkError);
+      }
 
-      const userData = response.data;
-      localStorage.setItem('token', userData.token);
-      localStorage.setItem('user', JSON.stringify(userData.user));
-      setUser(userData.user);
-      toast.success(`Welcome ${userData.user.name}!`);
-      navigate('/dancer');
+      // If email verification is required, send code first (without logging in)
+      if (currentVerificationRequired) {
+        try {
+          console.log('Sending verification code for dancer:', { email, clubId });
+          const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
+            email,
+            userType: 'dancer',
+            clubId
+          });
+          
+          if (response.data.success) {
+            toast.success('Verification code sent to your email!');
+            setShowVerification(true);
+            setLoading(false);
+            return;
+          }
+        } catch (verificationError: any) {
+          console.error('Error sending verification code:', verificationError);
+          const errorMsg = verificationError.response?.data?.error || 'Failed to send verification code. Please try again.';
+          toast.error(errorMsg);
+          setLoading(false);
+          return;
+        }
+      } else {
+        // If verification not required, proceed with normal login
+        console.log('Verification not required, proceeding with normal login');
+        const response = await axios.post(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
+          { email, password }
+        );
+
+        const userData = response.data;
+        localStorage.setItem('token', userData.token);
+        localStorage.setItem('user', JSON.stringify(userData.user));
+        setUser(userData.user);
+        toast.success(`Welcome ${userData.user.name}!`);
+        navigate('/dancer');
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       const errorMsg = error.response?.data?.error || 'Login failed. Please check your credentials.';
@@ -52,6 +124,62 @@ const DancerLogin: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const handleVerificationComplete = async (verified: boolean) => {
+    // After verification is complete (code and password verified), complete login
+    if (verified) {
+      setLoading(true);
+      try {
+        // Code and password are already verified by the verification endpoint
+        // Now complete the login to get the token
+        const response = await axios.post(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
+          { email, password }
+        );
+
+        const userData = response.data;
+        localStorage.setItem('token', userData.token);
+        localStorage.setItem('user', JSON.stringify(userData.user));
+        setUser(userData.user);
+        toast.success(`Welcome ${userData.user.name}!`);
+        navigate('/dancer');
+      } catch (error: any) {
+        console.error('Login completion error:', error);
+        toast.error(error.response?.data?.error || 'Failed to complete login. Please try again.');
+        setLoading(false);
+      }
+    } else {
+      // Verification failed, allow retry
+      setShowVerification(false);
+      setLoading(false);
+    }
+  };
+
+  // Show verification code input if verification is required
+  if (showVerification) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <h1 className="login-title">{clubName}</h1>
+          <p style={{ textAlign: 'center', color: '#8b7fb8', marginBottom: '1rem', fontSize: '1rem', fontWeight: '600' }}>
+            Dancer Portal
+          </p>
+          <VerificationCode
+            email={email}
+            userType="dancer"
+            password={password}
+            clubId={clubId}
+            onVerified={handleVerificationComplete}
+            onCancel={() => {
+              setShowVerification(false);
+              setLoading(false);
+            }}
+            expiresIn={codeExpiry}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-container">

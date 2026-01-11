@@ -1755,6 +1755,7 @@ app.get('/api/debug/judge/:email', authenticateToken, async (req, res) => {
 app.get('/api/auth/verification-required/:clubId?', async (req, res) => {
   try {
     const clubId = req.params.clubId || req.query.clubId || 'msu-dance-club';
+    const email = req.query.email; // Optional: email to check per-user login count
     
     // Get settings for the club
     let settingsDoc = await db.collection('settings').doc(`settings_${clubId}`).get();
@@ -1762,12 +1763,78 @@ app.get('/api/auth/verification-required/:clubId?', async (req, res) => {
       settingsDoc = await db.collection('settings').doc('audition_settings').get();
     }
     
-    const requireVerification = settingsDoc.exists 
-      ? (settingsDoc.data().securitySettings?.requireEmailVerificationForLogin !== false) // Default to true if not set
-      : true; // Default to true if settings don't exist
-    
     // Check if email service is actually configured and working
     const emailConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASSWORD);
+    
+    // Default: verification required if email is configured
+    let requireVerification = emailConfigured;
+    
+    // If email is provided, check user's login count
+    // Require verification: first login (loginCount is undefined or 0) OR every 10th login (loginCount % 10 === 0)
+    // BUT: If user exists but loginCount is undefined, treat as existing user (don't require verification)
+    // This handles migration: existing users without loginCount don't need verification
+    if (email && emailConfigured) {
+      try {
+        // Try to find user in judges collection first
+        const judgesSnapshot = await db.collection('judges')
+          .where('email', '==', email.toLowerCase().trim())
+          .where('clubId', '==', clubId)
+          .limit(1)
+          .get();
+        
+        if (!judgesSnapshot.empty) {
+          const judge = judgesSnapshot.docs[0].data();
+          const loginCount = judge.loginCount;
+          
+          // Only require verification if:
+          // 1. loginCount is explicitly 0 (first login after migration)
+          // 2. loginCount is divisible by 10 (every 10th login: 10, 20, 30, etc.)
+          // 3. loginCount is undefined BUT user has lastLoginAt (migration case - treat as existing user)
+          if (loginCount === undefined) {
+            // User exists but no loginCount yet - treat as existing user (don't require verification)
+            // They'll get loginCount set on next login
+            requireVerification = false;
+          } else if (loginCount === 0) {
+            // Explicitly first login (loginCount is 0)
+            requireVerification = true;
+          } else {
+            // Check if divisible by 10 (every 10th login)
+            requireVerification = (loginCount % 10 === 0);
+          }
+        } else {
+          // Try club_members collection for dancers
+          const membersSnapshot = await db.collection('club_members')
+            .where('email', '==', email.toLowerCase().trim())
+            .where('clubId', '==', clubId)
+            .limit(1)
+            .get();
+          
+          if (!membersSnapshot.empty) {
+            const member = membersSnapshot.docs[0].data();
+            const loginCount = member.loginCount;
+            
+            // Same logic as judges
+            if (loginCount === undefined) {
+              // User exists but no loginCount yet - treat as existing user (don't require verification)
+              requireVerification = false;
+            } else if (loginCount === 0) {
+              // Explicitly first login
+              requireVerification = true;
+            } else {
+              // Check if divisible by 10 (every 10th login)
+              requireVerification = (loginCount % 10 === 0);
+            }
+          } else {
+            // User not found, require verification (first login - new user)
+            requireVerification = true;
+          }
+        }
+      } catch (userCheckError) {
+        console.error('Error checking user login count:', userCheckError);
+        // On error, default to not requiring verification (safer for existing users)
+        requireVerification = false;
+      }
+    }
     
     res.json({
       requireVerification: requireVerification && emailConfigured, // Only require if email is configured
@@ -1998,6 +2065,7 @@ app.post('/api/auth/verify-code', async (req, res) => {
         }
 
         // Return success - the frontend will proceed with login
+        // Login count will be incremented in the login endpoint
         res.json({ 
           success: true, 
           message: 'Verification code verified',
@@ -2099,6 +2167,13 @@ app.post('/api/auth/login', async (req, res) => {
     
     console.log('✅ Login successful:', { email, role: roleToUse, name: judge.name, clubId, canAccessAdmin });
     
+    // Increment login count after successful login
+    const currentLoginCount = judge.loginCount || 0;
+    await judgeDoc.ref.update({
+      loginCount: currentLoginCount + 1,
+      lastLoginAt: new Date()
+    });
+    
     // Include clubId in JWT token for multi-tenant support
     const token = jwt.sign(
       { id: judgeId, email, role: roleToUse, name: judge.name, clubId },
@@ -2156,6 +2231,13 @@ app.post('/api/auth/dancer-login', async (req, res) => {
     }
     
     console.log('✅ Dancer login successful:', { email, name: member.name, level: member.level, clubId });
+    
+    // Increment login count after successful login
+    const currentLoginCount = member.loginCount || 0;
+    await memberDoc.ref.update({
+      loginCount: currentLoginCount + 1,
+      lastLoginAt: new Date()
+    });
     
     // Include clubId in JWT token for multi-tenant support
     const token = jwt.sign(
