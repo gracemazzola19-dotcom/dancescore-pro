@@ -508,9 +508,20 @@ const JudgeDashboard: React.FC = () => {
         delete autoSaveTimeouts.current[dancerId];
       }
       
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const response = await api.post('/api/scores', scoreData);
+      // Include auditionId in the submission
+      const submissionData = {
+        ...scoreData,
+        auditionId: currentAudition?.id || null
+      };
       
+      const response = await api.post('/api/scores', submissionData);
+      
+      // Verify response has ID (confirms save was successful)
+      if (!response.data.id) {
+        throw new Error('Score submission failed: No ID returned from server');
+      }
+      
+      console.log(`✅ Scores submitted successfully for dancer ${dancerId}, score ID: ${response.data.id}`);
       toast.success(`Scores submitted for ${currentDancers.find(d => d.id === dancerId)?.name || 'dancer'}!`);
       
       // Clear save status

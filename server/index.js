@@ -4633,9 +4633,20 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
       });
     }
 
+    // Verify the score was actually saved by reading it back
+    const savedDoc = await docRef.get();
+    if (!savedDoc.exists) {
+      console.error(`❌ CRITICAL: Score document ${docRef.id} was not created!`);
+      return res.status(500).json({ error: 'Score submission failed: Document was not created' });
+    }
+    
+    const savedData = savedDoc.data();
+    console.log(`✅ Score verified saved: ID ${docRef.id}, submitted: ${savedData.submitted}, dancerId: ${savedData.dancerId}, judgeId: ${savedData.judgeId}`);
+    
     // Clear cache for this audition's dancers when scores are submitted
-    if (auditionId) {
-      const cacheKey = `dancers_${clubId}_${auditionId}`;
+    const finalAuditionId = auditionId || dancerData.auditionId;
+    if (finalAuditionId) {
+      const cacheKey = `dancers_${clubId}_${finalAuditionId}`;
       cache.del(cacheKey);
     }
     // Also clear generic cache
@@ -4646,7 +4657,7 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
       }
     });
     
-    res.json({ id: docRef.id, ...scoreData });
+    res.json({ id: docRef.id, ...scoreData, verified: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
