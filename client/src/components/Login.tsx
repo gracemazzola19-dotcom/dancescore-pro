@@ -92,7 +92,8 @@ const Login: React.FC = () => {
             // Check if email sending failed
             if (response.data.emailFailed) {
               // Email failed - allow login without verification as fallback
-              console.warn('Email sending failed, allowing login without verification');
+              // Note: This is expected behavior when email service is unavailable
+              console.log('Email sending failed, allowing login without verification (expected fallback behavior)');
               toast(response.data.warning || 'Email service unavailable. Proceeding with login without verification.');
               // Proceed with normal login
               const loginResponse = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/login`, {
