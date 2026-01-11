@@ -809,7 +809,6 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🎭</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Auditions</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
                 {auditions.length}
@@ -840,7 +839,6 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>👨‍⚖️</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Judges</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
                 {judges.filter(j => j.active).length}
@@ -871,7 +869,6 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>💃</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Dancers</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
                 {clubMembers.length}
@@ -902,7 +899,6 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>{customTexts.attendanceSheetTitle}</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
                 ✓
@@ -933,7 +929,6 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📝</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>{customTexts.absenceRequestsTabLabel}</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
                 {absenceRequests.length}
@@ -964,7 +959,6 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📎</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>{customTexts.makeUpSubmissionsTabLabel}</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
                 {makeUpSubmissions.length}
@@ -995,10 +989,9 @@ const AdminDashboard: React.FC = () => {
                 e.currentTarget.style.borderColor = '#FFE5F1';
               }}
             >
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📁</div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Files</h3>
-              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
-                📄
+              <div style={{ fontSize: '1rem', fontWeight: '600', color: '#8B6FA8', marginBottom: '0.5rem' }}>
+                View All
               </div>
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage files and archives</p>
             </div>
