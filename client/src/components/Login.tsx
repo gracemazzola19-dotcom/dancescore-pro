@@ -326,18 +326,6 @@ const Login: React.FC = () => {
               >
                 E-board Member
               </button>
-              
-              <button
-                type="button"
-                onClick={() => handleRoleTypeSelection('admin')}
-                className="login-button"
-                style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: 'white'
-                }}
-              >
-                Admin
-              </button>
             </div>
             
             <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '2rem', textAlign: 'center' }}>
