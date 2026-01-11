@@ -583,6 +583,25 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleAuditionStatusChange = async (auditionId: string, status: string) => {
+    try {
+      if (status === 'archived') {
+        // Archive audition (exports data and stores in File Manager)
+        const response = await api.post(`/api/archive/audition/${auditionId}`);
+        toast.success('Audition archived successfully! Data exported and stored in Files.');
+        fetchAuditions();
+      } else {
+        // Regular status change
+        await api.put(`/api/auditions/${auditionId}/status`, { status });
+        toast.success('Audition status updated successfully');
+        fetchAuditions();
+      }
+    } catch (error: any) {
+      console.error('Error updating audition status:', error);
+      toast.error(error.response?.data?.error || 'Failed to update audition status');
+    }
+  };
+
   const handleCreateJudge = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -935,19 +954,19 @@ const AdminDashboard: React.FC = () => {
                                 </button>
                               )}
               <select
-                                value={audition.status}
-                                onChange={(e) => handleAuditionStatusChange(audition.id, e.target.value as any)}
-                                style={{
-                                  padding: '0.5rem',
-                                  borderRadius: '0.25rem',
-                                  border: '1px solid #ced4da',
-                                  fontSize: '0.9rem'
-                                }}
-                              >
-                                <option value="draft">Draft</option>
-                                <option value="active">Active</option>
-                                <option value="completed">Completed</option>
-                                <option value="archived">Archived</option>
+                value={audition.status}
+                onChange={(e) => handleAuditionStatusChange(audition.id, e.target.value as any)}
+                style={{
+                  padding: '0.5rem',
+                  borderRadius: '0.25rem',
+                  border: '1px solid #ced4da',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archive (Exports & Stores)</option>
               </select>
                               <button
                                 onClick={() => handleDeleteAudition(audition.id, audition.name)}

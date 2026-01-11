@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 
 interface FileItem {
   id: string;
-  type: 'video' | 'makeup';
+  type: 'video' | 'makeup' | 'archived';
   name: string;
   filename: string;
   size: number;
@@ -25,18 +25,24 @@ interface FileItem {
   eventId?: string;
   eventName?: string;
   status?: string;
+  // Archived-specific
+  archivedAt?: string | Date;
+  archivedBy?: string;
+  itemType?: string;
+  itemId?: string;
+  itemName?: string;
 }
 
 interface FilesData {
   videos: FileItem[];
   makeUpSubmissions: FileItem[];
-  exports: FileItem[];
+  archived: FileItem[];
 }
 
 const FileManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [files, setFiles] = useState<FilesData>({ videos: [], makeUpSubmissions: [], exports: [] });
-  const [activeCategory, setActiveCategory] = useState<'all' | 'videos' | 'makeup'>('all');
+  const [files, setFiles] = useState<FilesData>({ videos: [], makeUpSubmissions: [], archived: [] });
+  const [activeCategory, setActiveCategory] = useState<'all' | 'videos' | 'makeup' | 'archived'>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,9 +78,11 @@ const FileManager: React.FC = () => {
 
   const getFileIcon = (mimeType: string, type: string): string => {
     if (type === 'video') return '🎥';
+    if (type === 'archived') return '📦';
     if (mimeType.includes('pdf')) return '📄';
     if (mimeType.includes('image')) return '🖼️';
     if (mimeType.includes('word')) return '📝';
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
     return '📎';
   };
 
@@ -85,7 +93,7 @@ const FileManager: React.FC = () => {
 
     try {
       setDeletingId(file.id);
-      const fileType = file.type === 'video' ? 'video' : 'makeup';
+      const fileType = file.type === 'video' ? 'video' : file.type === 'makeup' ? 'makeup' : 'archived';
       await api.delete(`/api/files/${fileType}/${file.id}`);
       toast.success('File deleted successfully');
       fetchFiles(); // Refresh the list
@@ -112,10 +120,11 @@ const FileManager: React.FC = () => {
 
   const allFiles: FileItem[] = [
     ...files.videos.map(f => ({ ...f, category: 'videos' })),
-    ...files.makeUpSubmissions.map(f => ({ ...f, category: 'makeup' }))
+    ...files.makeUpSubmissions.map(f => ({ ...f, category: 'makeup' })),
+    ...(files.archived || []).map(f => ({ ...f, category: 'archived' }))
   ].sort((a, b) => {
-    const aDate = new Date(a.createdAt || a.recordedAt || 0).getTime();
-    const bDate = new Date(b.createdAt || b.recordedAt || 0).getTime();
+    const aDate = new Date(a.createdAt || a.recordedAt || a.archivedAt || 0).getTime();
+    const bDate = new Date(b.createdAt || b.recordedAt || b.archivedAt || 0).getTime();
     return bDate - aDate;
   }) as FileItem[];
 
@@ -123,7 +132,9 @@ const FileManager: React.FC = () => {
     ? allFiles 
     : activeCategory === 'videos'
     ? files.videos
-    : files.makeUpSubmissions;
+    : activeCategory === 'makeup'
+    ? files.makeUpSubmissions
+    : files.archived || [];
 
   const totalSize = filteredFiles.reduce((sum, file) => sum + (file.size || 0), 0);
 
@@ -156,7 +167,8 @@ const FileManager: React.FC = () => {
         {[
           { key: 'all', label: `All Files (${allFiles.length})` },
           { key: 'videos', label: `Videos (${files.videos.length})` },
-          { key: 'makeup', label: `Make-Up Files (${files.makeUpSubmissions.length})` }
+          { key: 'makeup', label: `Make-Up Files (${files.makeUpSubmissions.length})` },
+          { key: 'archived', label: `Archived (${files.archived?.length || 0})` }
         ].map(cat => (
           <button
             key={cat.key}
@@ -325,6 +337,53 @@ const FileManager: React.FC = () => {
                             color: '#7B1FA2'
                           }}>
                             👤 {file.recordedBy}
+                          </span>
+                        )}
+                        {file.description && (
+                          <div style={{ 
+                            width: '100%',
+                            marginTop: '0.5rem',
+                            padding: '0.5rem',
+                            backgroundColor: '#F5F5F5',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.85rem',
+                            color: '#555'
+                          }}>
+                            {file.description}
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {file.type === 'archived' && (
+                      <>
+                        {file.itemName && (
+                          <span style={{ 
+                            padding: '0.25rem 0.5rem',
+                            backgroundColor: '#E5F3FF',
+                            borderRadius: '0.25rem',
+                            color: '#1976D2'
+                          }}>
+                            📦 {file.itemName}
+                          </span>
+                        )}
+                        {file.itemType && (
+                          <span style={{ 
+                            padding: '0.25rem 0.5rem',
+                            backgroundColor: '#F3E5F5',
+                            borderRadius: '0.25rem',
+                            color: '#7B1FA2'
+                          }}>
+                            🏷️ {file.itemType}
+                          </span>
+                        )}
+                        {file.archivedBy && (
+                          <span style={{ 
+                            padding: '0.25rem 0.5rem',
+                            backgroundColor: '#FFF3E0',
+                            borderRadius: '0.25rem',
+                            color: '#F57C00'
+                          }}>
+                            👤 Archived by: {file.archivedBy}
                           </span>
                         )}
                         {file.description && (

@@ -5707,7 +5707,7 @@ app.get('/api/files', authenticateToken, async (req, res) => {
     const files = {
       videos: [],
       makeUpSubmissions: [],
-      exports: []
+      archived: []
     };
     
     // Get all videos for this club
@@ -5789,8 +5789,38 @@ app.get('/api/files', authenticateToken, async (req, res) => {
       console.error('Error fetching make-up submissions:', error);
     }
     
-    // Note: Exports are generated on-demand, so we don't store them
-    // But we could add a history of generated exports in the future
+    // Get all archived items for this club
+    try {
+      const archivedSnapshot = await db.collection('archived_files')
+        .where('clubId', '==', clubId)
+        .orderBy('archivedAt', 'desc')
+        .get();
+      
+      for (const doc of archivedSnapshot.docs) {
+        const archivedData = doc.data();
+        
+        files.archived = files.archived || [];
+        files.archived.push({
+          id: doc.id,
+          type: 'archived',
+          name: archivedData.name || 'Archived Item',
+          filename: archivedData.filename,
+          size: archivedData.size || 0,
+          mimeType: archivedData.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          createdAt: archivedData.archivedAt?.toDate?.() || archivedData.archivedAt,
+          archivedAt: archivedData.archivedAt?.toDate?.() || archivedData.archivedAt,
+          archivedBy: archivedData.archivedByName || archivedData.archivedBy || 'Unknown',
+          itemType: archivedData.itemType || 'audition', // 'audition', 'data', etc.
+          itemId: archivedData.itemId,
+          itemName: archivedData.itemName,
+          description: archivedData.description || '',
+          url: archivedData.fileUrl,
+          path: archivedData.filePath
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching archived files:', error);
+    }
     
     res.json(files);
   } catch (error) {
@@ -5872,6 +5902,178 @@ app.delete('/api/files/:type/:id', authenticateToken, async (req, res) => {
     }
   } catch (error) {
     console.error('Error deleting file:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Archive an audition (exports data and stores in archives)
+app.post('/api/archive/audition/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id: auditionId } = req.params;
+    const clubId = getClubId(req);
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Verify audition exists and belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(auditionId).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Audition not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
+    }
+    
+    // Get all dancers for this audition
+    const dancersSnapshot = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', auditionId)
+      .get();
+    
+    // Get all scores for these dancers
+    const dancerIds = dancersSnapshot.docs.map(doc => doc.id);
+    const allScores = [];
+    
+    if (dancerIds.length > 0) {
+      // Firestore 'in' queries are limited to 10 items, so batch
+      for (let i = 0; i < dancerIds.length; i += 10) {
+        const batchIds = dancerIds.slice(i, i + 10);
+        const scoresSnapshot = await db.collection('scores')
+          .where('clubId', '==', clubId)
+          .where('dancerId', 'in', batchIds)
+          .get();
+        allScores.push(...scoresSnapshot.docs.map(doc => doc.data()));
+      }
+    }
+    
+    // Calculate results (similar to getResults function)
+    const results = [];
+    for (const dancerDoc of dancersSnapshot.docs) {
+      const dancer = { id: dancerDoc.id, ...dancerDoc.data() };
+      const scores = allScores.filter(s => s.dancerId === dancer.id);
+      
+      if (scores.length > 0) {
+        const calculateAverageWithDropping = (scoreArray) => {
+          if (scoreArray.length === 0) return 0;
+          if (scoreArray.length <= 2) {
+            return scoreArray.reduce((sum, val) => sum + val, 0) / scoreArray.length;
+          }
+          const sortedScores = [...scoreArray].sort((a, b) => a - b);
+          const trimmedScores = sortedScores.slice(1, -1);
+          if (trimmedScores.length === 0) return 0;
+          return trimmedScores.reduce((sum, val) => sum + val, 0) / trimmedScores.length;
+        };
+        
+        const kickScores = scores.map(s => s.scores.kick);
+        const jumpScores = scores.map(s => s.scores.jump);
+        const turnScores = scores.map(s => s.scores.turn);
+        const performanceScores = scores.map(s => s.scores.performance);
+        const executionScores = scores.map(s => s.scores.execution);
+        const techniqueScores = scores.map(s => s.scores.technique);
+        
+        const averages = {
+          kick: calculateAverageWithDropping(kickScores),
+          jump: calculateAverageWithDropping(jumpScores),
+          turn: calculateAverageWithDropping(turnScores),
+          performance: calculateAverageWithDropping(performanceScores),
+          execution: calculateAverageWithDropping(executionScores),
+          technique: calculateAverageWithDropping(techniqueScores)
+        };
+        
+        const totalAverage = averages.kick + averages.jump + averages.turn + 
+                           averages.performance + averages.execution + averages.technique;
+        
+        results.push({
+          ...dancer,
+          averages,
+          totalAverage,
+          scoreCount: scores.length
+        });
+      } else {
+        results.push({
+          ...dancer,
+          averages: null,
+          totalAverage: 0,
+          scoreCount: 0
+        });
+      }
+    }
+    
+    const sortedResults = results.sort((a, b) => b.totalAverage - a.totalAverage);
+    
+    // Create Excel file
+    const worksheet = XLSX.utils.json_to_sheet(sortedResults.map(dancer => ({
+      Name: dancer.name,
+      'Audition Number': dancer.auditionNumber,
+      Email: dancer.email || '',
+      Phone: dancer.phone || '',
+      'Shirt Size': dancer.shirtSize || '',
+      Group: dancer.group,
+      Kick: dancer.averages ? dancer.averages.kick.toFixed(2) : 0,
+      Jump: dancer.averages ? dancer.averages.jump.toFixed(2) : 0,
+      Turn: dancer.averages ? dancer.averages.turn.toFixed(2) : 0,
+      Performance: dancer.averages ? dancer.averages.performance.toFixed(2) : 0,
+      Execution: dancer.averages ? dancer.averages.execution.toFixed(2) : 0,
+      Technique: dancer.averages ? dancer.averages.technique.toFixed(2) : 0,
+      'Total Score (32)': dancer.totalAverage.toFixed(2),
+      'Score Count': dancer.scoreCount
+    })));
+    
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Results');
+    
+    // Ensure archives directory exists
+    const archivesDir = path.join(__dirname, 'uploads', 'archives');
+    if (!fs.existsSync(archivesDir)) {
+      fs.mkdirSync(archivesDir, { recursive: true });
+    }
+    
+    // Generate filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+    const safeAuditionName = (auditionData.name || 'Audition').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const filename = `archive-${safeAuditionName}-${timestamp}.xlsx`;
+    const filePath = path.join(archivesDir, filename);
+    
+    // Write file
+    XLSX.writeFile(workbook, filePath);
+    
+    const fileStats = fs.statSync(filePath);
+    
+    // Store archive metadata in database
+    const archiveData = {
+      clubId: clubId,
+      itemType: 'audition',
+      itemId: auditionId,
+      itemName: auditionData.name || 'Unknown Audition',
+      name: `Archive: ${auditionData.name || 'Unknown Audition'}`,
+      filename: filename,
+      filePath: filePath,
+      fileUrl: `/uploads/archives/${filename}`,
+      size: fileStats.size,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      archivedAt: new Date(),
+      archivedBy: req.user.id,
+      archivedByName: req.user.name || 'Unknown',
+      description: `Archived audition data for ${auditionData.name || 'Unknown Audition'}`
+    };
+    
+    const archiveRef = await db.collection('archived_files').add(archiveData);
+    
+    // Update audition status to archived
+    await db.collection('auditions').doc(auditionId).update({
+      status: 'archived',
+      archivedAt: new Date(),
+      archivedBy: req.user.id
+    });
+    
+    res.json({ 
+      id: archiveRef.id,
+      message: 'Audition archived successfully',
+      ...archiveData
+    });
+  } catch (error) {
+    console.error('Error archiving audition:', error);
     res.status(500).json({ error: error.message });
   }
 });
