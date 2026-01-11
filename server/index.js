@@ -6035,8 +6035,43 @@ app.delete('/api/files/:type/:id', authenticateToken, async (req, res) => {
       await db.collection('make_up_submissions').doc(id).delete();
       
       res.json({ message: 'Make-up submission deleted successfully' });
+    } else if (type === 'archived') {
+      // Get archived file record first to verify clubId
+      const archivedDoc = await db.collection('archived_files').doc(id).get();
+      if (!archivedDoc.exists) {
+        return res.status(404).json({ error: 'Archived file not found' });
+      }
+      
+      const archivedData = archivedDoc.data();
+      
+      // Security check: verify archived file belongs to user's club
+      if (archivedData.clubId && archivedData.clubId !== clubId) {
+        return res.status(403).json({ error: 'Access denied: Archived file belongs to a different club' });
+      }
+      
+      // Delete archived file from server
+      if (archivedData.filePath) {
+        const archivedPath = path.isAbsolute(archivedData.filePath) 
+          ? archivedData.filePath 
+          : path.join(__dirname, archivedData.filePath);
+        
+        if (fs.existsSync(archivedPath)) {
+          try {
+            fs.unlinkSync(archivedPath);
+            console.log(`✅ Deleted archived file: ${archivedPath}`);
+          } catch (fileError) {
+            console.error('Error deleting archived file:', fileError);
+            // Continue with database deletion even if file deletion fails
+          }
+        }
+      }
+      
+      // Delete archived file record from database
+      await db.collection('archived_files').doc(id).delete();
+      
+      res.json({ message: 'Archived file deleted successfully' });
     } else {
-      return res.status(400).json({ error: 'Invalid file type' });
+      return res.status(400).json({ error: 'Invalid file type. Must be "video", "makeup", or "archived"' });
     }
   } catch (error) {
     console.error('Error deleting file:', error);
