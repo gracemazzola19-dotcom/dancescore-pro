@@ -53,7 +53,6 @@ const DancerAttendance: React.FC = () => {
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [selectedEventName, setSelectedEventName] = useState<string>('');
   const [makeUpFile, setMakeUpFile] = useState<File | null>(null);
-  const [makeUpUrl, setMakeUpUrl] = useState<string>('');
   const [submittingMakeUp, setSubmittingMakeUp] = useState(false);
   const [sentToCoordinator, setSentToCoordinator] = useState(false);
 
@@ -188,13 +187,12 @@ const DancerAttendance: React.FC = () => {
   const handleMakeUpFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Check file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File is too large. Please use a file smaller than 10MB.');
+        return;
+      }
       setMakeUpFile(file);
-      // Create a preview URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setMakeUpUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -206,7 +204,7 @@ const DancerAttendance: React.FC = () => {
       return;
     }
 
-    if (!makeUpFile && !makeUpUrl) {
+    if (!makeUpFile) {
       toast.error('Please select a file for your make-up work');
       return;
     }
@@ -224,56 +222,28 @@ const DancerAttendance: React.FC = () => {
 
     try {
       setSubmittingMakeUp(true);
-      
-      // Wait for file to be converted to base64 if needed
-      let finalMakeUpUrl = makeUpUrl;
-      if (makeUpFile && !makeUpUrl) {
-        // File is selected but not yet converted - convert it now
-        finalMakeUpUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            resolve(reader.result as string);
-          };
-          reader.onerror = () => {
-            reject(new Error('Failed to read file'));
-          };
-          reader.readAsDataURL(makeUpFile);
-        });
-      }
-
-      if (!finalMakeUpUrl) {
-        toast.error('Please select a file for your make-up work');
-        setSubmittingMakeUp(false);
-        return;
-      }
-
-      // Check file size (base64 is ~33% larger than original)
-      // Warn if file is very large (>10MB original = ~13MB base64)
-      if (makeUpFile && makeUpFile.size > 10 * 1024 * 1024) {
-        const base64Size = finalMakeUpUrl.length * 0.75; // Approximate original size
-        if (base64Size > 40 * 1024 * 1024) {
-          toast.error('File is too large. Please use a file smaller than 10MB.');
-          setSubmittingMakeUp(false);
-          return;
-        }
-      }
 
       // Get request if it exists (optional - make-up can be submitted without a request)
       const request = getRequestForEvent(selectedEventId);
 
-      const response = await api.post('/api/make-up-submissions', {
-        absenceRequestId: request?.id || null, // Optional - can be null if no request exists
-        eventId: selectedEventId,
-        dancerName: dancer.name,
-        dancerLevel: dancer.level,
-        makeUpUrl: finalMakeUpUrl,
-        sentToCoordinator: sentToCoordinator
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('makeUpFile', makeUpFile);
+      formData.append('absenceRequestId', request?.id || '');
+      formData.append('eventId', selectedEventId);
+      formData.append('dancerName', dancer.name);
+      formData.append('dancerLevel', dancer.level);
+      formData.append('sentToCoordinator', sentToCoordinator.toString());
+
+      const response = await api.post('/api/make-up-submissions', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
 
       toast.success('Make-up work submitted successfully!');
       setShowMakeUpModal(false);
       setMakeUpFile(null);
-      setMakeUpUrl('');
       setSentToCoordinator(false);
       fetchAttendanceData();
     } catch (error: any) {
@@ -754,7 +724,6 @@ const DancerAttendance: React.FC = () => {
                     onClick={() => {
                       setShowMakeUpModal(false);
                       setMakeUpFile(null);
-                      setMakeUpUrl('');
                       setSentToCoordinator(false);
                     }}
                     style={{

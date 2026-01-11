@@ -37,6 +37,31 @@ const db = dbAdapter;
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
+// Configure multer for make-up file uploads
+const makeUpStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const fs = require('fs');
+    const dir = 'uploads/make-up/';
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    // Generate unique filename: timestamp-random.ext
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = file.originalname.split('.').pop() || 'pdf';
+    cb(null, `makeup-${uniqueSuffix}.${ext}`);
+  }
+});
+
+const makeUpUpload = multer({
+  storage: makeUpStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB max file size
+  }
+});
+
 // Configure multer for video uploads (larger file size, specific video types)
 const videoStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -2832,13 +2857,17 @@ app.post('/api/absence-requests', async (req, res) => {
 });
 
 // Submit make-up work for a missed practice
-app.post('/api/make-up-submissions', async (req, res) => {
+app.post('/api/make-up-submissions', makeUpUpload.single('makeUpFile'), async (req, res) => {
   try {
-    const { absenceRequestId, eventId, dancerName, dancerLevel, makeUpUrl, sentToCoordinator } = req.body;
+    const { absenceRequestId, eventId, dancerName, dancerLevel, sentToCoordinator } = req.body;
     
     // absenceRequestId is optional - make-up can be submitted for any missed practice
     if (!eventId || !dancerName || !dancerLevel) {
       return res.status(400).json({ error: 'Missing required fields: eventId, dancerName, and dancerLevel are required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
     
     // Get clubId from event
@@ -2856,8 +2885,13 @@ app.post('/api/make-up-submissions', async (req, res) => {
       clubId: clubId, // Multi-tenant: get clubId from event
       dancerName,
       dancerLevel,
-      makeUpUrl,
-      sentToCoordinator: sentToCoordinator || false,
+      makeUpUrl: `/uploads/make-up/${req.file.filename}`, // Store file path instead of base64
+      makeUpPath: req.file.path,
+      makeUpFilename: req.file.filename,
+      makeUpOriginalName: req.file.originalname,
+      makeUpMimeType: req.file.mimetype,
+      makeUpSize: req.file.size,
+      sentToCoordinator: sentToCoordinator === 'true' || sentToCoordinator === true,
       status: 'pending',
       submittedAt: new Date(),
       reviewedAt: null,
@@ -2871,7 +2905,7 @@ app.post('/api/make-up-submissions', async (req, res) => {
     res.json({ id: docRef.id, ...makeUpData });
   } catch (error) {
     console.error('Error submitting make-up:', error);
-    res.status(500).json({ error: 'Failed to submit make-up work' });
+    res.status(500).json({ error: error.message || 'Failed to submit make-up work' });
   }
 });
 
