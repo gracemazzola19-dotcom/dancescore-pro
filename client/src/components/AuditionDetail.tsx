@@ -26,6 +26,7 @@ interface Dancer {
   group: string;
   averageScore: number;
   rank: number;
+  hidden?: boolean;
   scores: {
     [judgeName: string]: {
       kick: number;
@@ -725,6 +726,7 @@ const AuditionDetail: React.FC = () => {
               <table className="results-table">
             <thead>
               <tr>
+                <th>Status</th>
                 <th>Name</th>
                 <th>#</th>
                 <th>Email</th>
@@ -750,7 +752,38 @@ const AuditionDetail: React.FC = () => {
                 const stats = calculateStatistics(dancer);
                 return (
                   <React.Fragment key={dancer.id}>
-                    <tr>
+                    <tr style={{
+                      ...(dancer.hidden ? {
+                        backgroundColor: '#f8f9fa',
+                        opacity: 0.6,
+                        color: '#6c757d'
+                      } : {})
+                    }}>
+                      <td>
+                        {dancer.hidden ? (
+                          <span style={{
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            backgroundColor: '#dc3545',
+                            color: 'white'
+                          }}>
+                            Hidden
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            backgroundColor: '#28a745',
+                            color: 'white'
+                          }}>
+                            Active
+                          </span>
+                        )}
+                      </td>
                       <td>{dancer.name}</td>
                       <td>{dancer.auditionNumber}</td>
                       <td style={{ fontSize: '0.85rem' }}>{dancer.email || '-'}</td>
@@ -818,7 +851,7 @@ const AuditionDetail: React.FC = () => {
                     </tr>
                     {expandedDancer === dancer.id && (
                       <tr>
-                        <td colSpan={19} style={{ backgroundColor: '#f8f9fa', padding: '1.5rem' }}>
+                        <td colSpan={20} style={{ backgroundColor: '#f8f9fa', padding: '1.5rem' }}>
                           {/* Final Score Display */}
                           <div style={{ 
                             textAlign: 'center', 
