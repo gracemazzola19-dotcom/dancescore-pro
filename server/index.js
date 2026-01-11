@@ -1905,7 +1905,22 @@ app.get('/api/auth/verification-required/:clubId?', async (req, res) => {
     // Check if email service is actually configured and working
     const emailConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASSWORD);
     
-    // Default: verification required if email is configured
+    // Check security settings for email verification requirement
+    const securitySettings = settingsDoc.exists ? (settingsDoc.data().securitySettings || {}) : {};
+    const requireEmailVerificationForLogin = securitySettings.requireEmailVerificationForLogin !== undefined 
+      ? securitySettings.requireEmailVerificationForLogin 
+      : true; // Default to true if not set
+    
+    // If verification is disabled in settings, don't require it
+    if (!requireEmailVerificationForLogin) {
+      return res.json({
+        requireVerification: false,
+        emailConfigured: emailConfigured,
+        codeExpiryMinutes: securitySettings.emailVerificationCodeExpiryMinutes || 10
+      });
+    }
+    
+    // Default: verification required if email is configured AND setting is enabled
     let requireVerification = emailConfigured;
     
     // If email is provided, check user's login count
