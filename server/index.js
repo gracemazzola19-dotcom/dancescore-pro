@@ -3814,7 +3814,8 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
         previousMember: dancerData.previousMember || '',
         previousLevel: dancerData.previousLevel || '',
         scores,
-        averageScore: parseFloat(averageScore.toFixed(2))
+        averageScore: parseFloat(averageScore.toFixed(2)),
+        hidden: dancerData.hidden || false
       });
     }
     
