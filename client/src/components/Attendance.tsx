@@ -632,21 +632,23 @@ const Attendance: React.FC = () => {
                             <small style={{ fontSize: '0.8rem', color: '#666' }}>
                               {formatDate(event.date)}
                             </small>
-                            <button
-                              onClick={() => handleDeleteEvent(event.id, event.name)}
-                              style={{
-                                backgroundColor: '#dc3545',
-                                color: 'white',
-                                border: 'none',
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '0.25rem',
-                                cursor: 'pointer',
-                                fontSize: '0.7rem',
-                                marginTop: '0.25rem'
-                              }}
-                            >
-                              Delete
-                            </button>
+                            {editMode && (
+                              <button
+                                onClick={() => handleDeleteEvent(event.id, event.name)}
+                                style={{
+                                  backgroundColor: '#dc3545',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.7rem',
+                                  marginTop: '0.25rem'
+                                }}
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </th>
                       ))}
