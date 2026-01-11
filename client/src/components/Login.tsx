@@ -81,7 +81,7 @@ const Login: React.FC = () => {
       if (currentVerificationRequired) {
         try {
           const userType = selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer';
-          console.log('Sending verification code for:', { email, userType, clubId });
+          console.log('Sending verification code for:', email, 'userType:', userType, 'clubId:', clubId);
           const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
             email,
             userType,
