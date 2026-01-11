@@ -66,6 +66,7 @@ const Attendance: React.FC = () => {
   const [selectedEvent, setSelectedEvent] = useState<AttendanceEvent | null>(null);
   const [qrCodes, setQrCodes] = useState<{ [eventId: string]: string }>({});
   const [expandedQR, setExpandedQR] = useState<{ [eventId: string]: boolean }>({});
+  const [editMode, setEditMode] = useState(false);
 
   // Event form state
   const [eventForm, setEventForm] = useState({
@@ -559,22 +560,24 @@ const Attendance: React.FC = () => {
                 Take Attendance
               </button>
               
-              <button
-                onClick={() => handleDeleteEvent(event.id, event.name)}
-                style={{
-                  backgroundColor: '#dc3545',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.25rem',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  marginTop: '0.5rem',
-                  width: '100%'
-                }}
-              >
-                Delete Practice
-              </button>
+              {editMode && (
+                <button
+                  onClick={() => handleDeleteEvent(event.id, event.name)}
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    marginTop: '0.5rem',
+                    width: '100%'
+                  }}
+                >
+                  Delete Practice
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -583,7 +586,27 @@ const Attendance: React.FC = () => {
       {/* Attendance Summary */}
       {clubMembers.length > 0 && (
         <div className="admin-section">
-          <h2>Attendance - {new Date(selectedYear, selectedMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ margin: 0 }}>Attendance - {new Date(selectedYear, selectedMonth - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
+            <button
+              onClick={() => setEditMode(!editMode)}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '0.25rem',
+                border: 'none',
+                backgroundColor: editMode ? '#dc3545' : '#6c757d',
+                color: 'white',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              {editMode ? '✓ Edit Mode ON' : 'Edit Mode'}
+            </button>
+          </div>
           
           {Object.entries(groupMembersByLevel(clubMembers)).map(([level, members]) => (
             <div key={level} style={{ marginBottom: '2rem' }}>
@@ -638,21 +661,23 @@ const Attendance: React.FC = () => {
                         <td style={{ padding: '1rem', borderBottom: '1px solid #dee2e6' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <strong>{member.name}</strong>
-                            <button
-                              onClick={() => handleDeleteDancer(member.id, member.name)}
-                              style={{
-                                backgroundColor: '#dc3545',
-                                color: 'white',
-                                border: 'none',
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '0.25rem',
-                                cursor: 'pointer',
-                                fontSize: '0.7rem'
-                              }}
-                              title="Delete dancer"
-                            >
-                              Delete
-                            </button>
+                            {editMode && (
+                              <button
+                                onClick={() => handleDeleteDancer(member.id, member.name)}
+                                style={{
+                                  backgroundColor: '#dc3545',
+                                  color: 'white',
+                                  border: 'none',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.7rem'
+                                }}
+                                title="Delete dancer"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </td>
                         {sortedEvents.map(event => {
