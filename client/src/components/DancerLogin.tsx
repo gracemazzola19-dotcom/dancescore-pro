@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import axios from 'axios';
@@ -21,6 +21,10 @@ const DancerLogin: React.FC = () => {
   const [codeExpiry, setCodeExpiry] = useState(600);
   const { setUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Get redirect URL from query params
+  const redirectUrl = searchParams.get('redirect') || '/dancer';
 
   useEffect(() => {
     // Fetch club name from public appearance endpoint
@@ -119,7 +123,7 @@ const DancerLogin: React.FC = () => {
               localStorage.setItem('user', JSON.stringify(userData.user));
               setUser(userData.user);
               toast.success(`Welcome ${userData.user.name}!`);
-              navigate('/dancer');
+              navigate(redirectUrl);
               return;
             }
             toast.success('Verification code sent to your email!');
@@ -138,12 +142,12 @@ const DancerLogin: React.FC = () => {
             { email, password }
           );
           const userData = loginResponse.data;
-          localStorage.setItem('token', userData.token);
-          localStorage.setItem('user', JSON.stringify(userData.user));
-          setUser(userData.user);
-          toast.success(`Welcome ${userData.user.name}!`);
-          navigate('/dancer');
-          return;
+              localStorage.setItem('token', userData.token);
+              localStorage.setItem('user', JSON.stringify(userData.user));
+              setUser(userData.user);
+              toast.success(`Welcome ${userData.user.name}!`);
+              navigate(redirectUrl);
+              return;
         }
       } else {
         // If verification not required, proceed with normal login
@@ -166,7 +170,7 @@ const DancerLogin: React.FC = () => {
           localStorage.setItem('user', JSON.stringify(userData.user));
           setUser(userData.user);
           toast.success(`Welcome ${userData.user.name}!`);
-          navigate('/dancer');
+          navigate(redirectUrl);
         }
       }
     } catch (error: any) {
@@ -208,7 +212,7 @@ const DancerLogin: React.FC = () => {
           localStorage.setItem('user', JSON.stringify(userData.user));
           setUser(userData.user);
           toast.success(`Welcome ${userData.user.name}!`);
-          navigate('/dancer');
+          navigate(redirectUrl);
         }
       } catch (error: any) {
         console.error('Login completion error:', error);
@@ -233,7 +237,7 @@ const DancerLogin: React.FC = () => {
         toast.success(`Welcome ${userData.user.name}!`);
         setShowPasswordChange(false);
         setTempUserData(null);
-        navigate('/dancer');
+        navigate(redirectUrl);
       } catch (error: any) {
         console.error('Error completing login after password change:', error);
         toast.error('Password changed, but login failed. Please log in again with your new password.');

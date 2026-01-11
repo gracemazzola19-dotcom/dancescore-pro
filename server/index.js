@@ -2771,14 +2771,21 @@ app.get('/api/attendance/events/:id', async (req, res) => {
   }
 });
 
-// Create attendance record (public access for QR code)
-app.post('/api/attendance/records', async (req, res) => {
+// Create attendance record (requires dancer authentication)
+app.post('/api/attendance/records', authenticateToken, async (req, res) => {
   try {
-    const { eventId, dancerName, dancerLevel, status, points, recordedAt, recordedBy } = req.body;
+    const { eventId, status } = req.body;
+    const userId = req.user.id;
+    const clubId = getClubId(req);
     
     // Validate required fields
-    if (!eventId || !dancerName || !dancerLevel || !status) {
+    if (!eventId || !status) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Verify user is a dancer
+    if (req.user.role !== 'dancer') {
+      return res.status(403).json({ error: 'Only dancers can submit attendance' });
     }
     
     // Verify event exists and get clubId from event
@@ -2788,14 +2795,32 @@ app.post('/api/attendance/records', async (req, res) => {
     }
     
     const eventData = eventDoc.data();
-    const clubId = eventData.clubId || 'msu-dance-club'; // Get clubId from event
+    const eventClubId = eventData.clubId || 'msu-dance-club';
     
-    // Check if dancer already has a record for this event (filtered by clubId)
+    // Verify event belongs to same club as dancer
+    if (eventClubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Event belongs to a different club' });
+    }
+    
+    // Get dancer information from club_members
+    const dancerDoc = await db.collection('club_members').doc(userId).get();
+    if (!dancerDoc.exists) {
+      return res.status(404).json({ error: 'Dancer not found' });
+    }
+    
+    const dancerData = dancerDoc.data();
+    const dancerName = dancerData.name;
+    const dancerLevel = dancerData.level;
+    
+    // Calculate points based on status
+    const points = status === 'present' ? (eventData.pointsValue || 1) : 
+                   status === 'absent' ? -(eventData.pointsValue || 1) : 0;
+    
+    // Check if dancer already has a record for this event (filtered by clubId and dancerId)
     const existingRecord = await db.collection('attendance_records')
       .where('clubId', '==', clubId)
       .where('eventId', '==', eventId)
-      .where('dancerName', '==', dancerName)
-      .where('dancerLevel', '==', dancerLevel)
+      .where('dancerId', '==', userId)
       .get();
     
     if (!existingRecord.empty) {
@@ -2805,7 +2830,7 @@ app.post('/api/attendance/records', async (req, res) => {
         status,
         points: parseInt(points) || 0,
         updatedAt: new Date(),
-        recordedBy: recordedBy || 'self-registration'
+        recordedBy: req.user.email || 'self-registration'
       });
       
       res.json({ id: recordId, message: 'Attendance updated successfully' });
@@ -2813,13 +2838,14 @@ app.post('/api/attendance/records', async (req, res) => {
       // Create new record with clubId from event
       const recordData = {
         eventId,
+        dancerId: userId, // Store dancer ID for better queries
         clubId: clubId, // Multi-tenant: get clubId from event
-        dancerName: dancerName.trim(),
-        dancerLevel: dancerLevel.trim(),
+        dancerName: dancerName,
+        dancerLevel: dancerLevel,
         status,
         points: parseInt(points) || 0,
-        recordedAt: recordedAt ? new Date(recordedAt) : new Date(),
-        recordedBy: recordedBy || 'self-registration'
+        recordedAt: new Date(),
+        recordedBy: req.user.email || 'self-registration'
       };
       
       const docRef = await db.collection('attendance_records').add(recordData);

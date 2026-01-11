@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import api from '../api/axios';
 
 interface AttendanceEvent {
@@ -13,6 +14,8 @@ interface AttendanceEvent {
 
 const PublicAttendance: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [event, setEvent] = useState<AttendanceEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -20,16 +23,24 @@ const PublicAttendance: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    name: '',
-    level: '',
     status: 'present' as 'present' | 'absent' | 'excused'
   });
 
+  // Check authentication on mount
   useEffect(() => {
-    if (eventId) {
-      fetchEvent();
+    if (!authLoading) {
+      if (!user || user.role !== 'dancer') {
+        // Redirect to dancer login with return URL
+        const currentPath = `/attendance/${eventId}`;
+        navigate(`/dancer-login?redirect=${encodeURIComponent(currentPath)}`);
+        return;
+      }
+      // User is logged in as dancer, fetch event
+      if (eventId) {
+        fetchEvent();
+      }
     }
-  }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authLoading, user, eventId, navigate]);
 
   const fetchEvent = async () => {
     try {
@@ -46,8 +57,8 @@ const PublicAttendance: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!eventId || !formData.name.trim() || !formData.level.trim()) {
-      setError('Please fill in all required fields');
+    if (!eventId || !user || user.role !== 'dancer') {
+      setError('Please log in as a dancer to submit attendance');
       return;
     }
 
@@ -55,25 +66,22 @@ const PublicAttendance: React.FC = () => {
       setSubmitting(true);
       setError(null);
 
-      // Calculate points based on status
-      const points = formData.status === 'present' ? event?.pointsValue || 1 : 
-                   formData.status === 'absent' ? -(event?.pointsValue || 1) : 0;
-
-      // Submit attendance record
+      // Submit attendance record (user info comes from token)
       await api.post('/api/attendance/records', {
         eventId,
-        dancerName: formData.name.trim(),
-        dancerLevel: formData.level.trim(),
-        status: formData.status,
-        points,
-        recordedAt: new Date(),
-        recordedBy: 'self-registration'
+        status: formData.status
       });
 
       setSubmitted(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting attendance:', error);
-      setError('Failed to submit attendance. Please try again.');
+      const errorMsg = error.response?.data?.error || 'Failed to submit attendance. Please try again.';
+      setError(errorMsg);
+      // If unauthorized, redirect to login
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        const currentPath = `/attendance/${eventId}`;
+        navigate(`/dancer-login?redirect=${encodeURIComponent(currentPath)}`);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -97,7 +105,8 @@ const PublicAttendance: React.FC = () => {
     }
   };
 
-  if (loading) {
+  // Show loading while checking authentication
+  if (authLoading || loading) {
     return (
       <div style={{ 
         minHeight: '100vh', 
@@ -159,7 +168,7 @@ const PublicAttendance: React.FC = () => {
         }}>
           <h1 style={{ color: '#28a745', marginBottom: '1rem' }}>Attendance Recorded!</h1>
           <p style={{ fontSize: '1.1rem', color: '#666', marginBottom: '1rem' }}>
-            Thank you, <strong>{formData.name}</strong>!
+            Thank you, <strong>{user?.name}</strong>!
           </p>
           <p style={{ fontSize: '1rem', color: '#666' }}>
             Your attendance for <strong>{event?.name}</strong> has been recorded.
@@ -258,64 +267,20 @@ const PublicAttendance: React.FC = () => {
             </div>
           )}
 
+          {user && (
+            <div style={{ 
+              marginBottom: '1.5rem',
+              padding: '1rem',
+              backgroundColor: '#e9ecef',
+              borderRadius: '0.5rem'
+            }}>
+              <p style={{ margin: '0', fontSize: '0.9rem', color: '#666' }}>
+                Logged in as: <strong>{user.name}</strong> ({user.level})
+              </p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
-                fontWeight: 'bold',
-                color: '#333'
-              }}>
-                Full Name *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter your full name"
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  border: '2px solid #dee2e6',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  boxSizing: 'border-box'
-                }}
-                required
-              />
-            </div>
-
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
-                fontWeight: 'bold',
-                color: '#333'
-              }}>
-                Level *
-              </label>
-              <select
-                value={formData.level}
-                onChange={(e) => setFormData({ ...formData, level: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  border: '2px solid #dee2e6',
-                  borderRadius: '0.5rem',
-                  fontSize: '1rem',
-                  boxSizing: 'border-box',
-                  backgroundColor: 'white'
-                }}
-                required
-              >
-                <option value="">Select your level</option>
-                <option value="Level 1">Level 1</option>
-                <option value="Level 2">Level 2</option>
-                <option value="Level 3">Level 3</option>
-                <option value="Level 4">Level 4</option>
-              </select>
-            </div>
-
             <div style={{ marginBottom: '2rem' }}>
               <label style={{ 
                 display: 'block', 
