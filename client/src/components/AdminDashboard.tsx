@@ -168,6 +168,7 @@ const AdminDashboard: React.FC = () => {
   
   // New Hub State
   const [activeTab, setActiveTab] = useState<'overview' | 'auditions' | 'judges' | 'dancers' | 'attendance' | 'absenceRequests' | 'makeUpSubmissions' | 'files' | 'settings'>('overview');
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [absenceRequests, setAbsenceRequests] = useState<any[]>([]);
   const [makeUpSubmissions, setMakeUpSubmissions] = useState<any[]>([]);
   const [auditions, setAuditions] = useState<Audition[]>([]);
@@ -699,88 +700,345 @@ const AdminDashboard: React.FC = () => {
         <p className="subtitle">DanceScore Pro - Audition Management System</p>
       </div>
       
-      <div className="dashboard-header">
+      <div className="dashboard-header" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', backgroundColor: '#fff', borderBottom: '2px solid #FFE5F1' }}>
         <div>
-          <h1 className="dashboard-title">Admin Dashboard</h1>
-          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.25rem' }}>
+          <h1 className="dashboard-title" style={{ margin: 0, fontSize: '1.8rem', fontWeight: '700', color: '#8B6FA8' }}>Admin Dashboard</h1>
+          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.25rem', margin: 0 }}>
             Full access for Admins and Secretaries
           </p>
         </div>
-        <button className="logout-button" onClick={logout}>
-          Logout
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button 
+            onClick={() => setSettingsMenuOpen(!settingsMenuOpen)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              borderRadius: '8px',
+              transition: 'background-color 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f8f9fa';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <div style={{ width: '24px', height: '3px', backgroundColor: '#8B6FA8', borderRadius: '2px' }}></div>
+            <div style={{ width: '24px', height: '3px', backgroundColor: '#8B6FA8', borderRadius: '2px' }}></div>
+            <div style={{ width: '24px', height: '3px', backgroundColor: '#8B6FA8', borderRadius: '2px' }}></div>
+          </button>
+          <button className="logout-button" onClick={logout}>
+            Logout
+          </button>
+        </div>
+        
+        {/* Settings Menu Dropdown */}
+        {settingsMenuOpen && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            right: '2rem',
+            backgroundColor: '#fff',
+            border: '2px solid #FFE5F1',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            zIndex: 1000,
+            minWidth: '200px',
+            marginTop: '0.5rem',
+            overflow: 'hidden'
+          }}>
+            <button
+              onClick={() => {
+                setActiveTab('settings');
+                setSettingsMenuOpen(false);
+              }}
+              style={{
+                width: '100%',
+                padding: '1rem',
+                textAlign: 'left',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: '600',
+                color: '#8B6FA8',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#FFE5F1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              Settings
+            </button>
+          </div>
+        )}
       </div>
       
-      {/* Tab Navigation */}
-      <div className="tab-navigation">
-        {[
-          { key: 'overview', label: 'Overview' },
-          { key: 'auditions', label: 'Auditions' },
-          { key: 'judges', label: 'Judges' },
-          { key: 'dancers', label: 'Dancers' },
-          { key: 'attendance', label: customTexts.attendanceSheetTitle },
-          { key: 'absenceRequests', label: customTexts.absenceRequestsTabLabel },
-          { key: 'makeUpSubmissions', label: customTexts.makeUpSubmissionsTabLabel },
-          { key: 'files', label: 'Files' },
-          { key: 'settings', label: 'Settings' }
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className={`tab-button ${activeTab === tab.key ? 'active' : ''}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* Widget-based Home Screen */}
+      {activeTab === 'overview' && (
+        <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
+            {/* Auditions Widget */}
+            <div
+              onClick={() => setActiveTab('auditions')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🎭</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Auditions</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                {auditions.length}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage audition events</p>
+            </div>
+
+            {/* Judges Widget */}
+            <div
+              onClick={() => setActiveTab('judges')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>👨‍⚖️</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Judges</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                {judges.filter(j => j.active).length}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Active judges: {judges.filter(j => j.active).length}</p>
+            </div>
+
+            {/* Dancers Widget */}
+            <div
+              onClick={() => setActiveTab('dancers')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>💃</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Dancers</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                {clubMembers.length}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage dancer database</p>
+            </div>
+
+            {/* Attendance Widget */}
+            <div
+              onClick={() => setActiveTab('attendance')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>{customTexts.attendanceSheetTitle}</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                ✓
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Track practice attendance</p>
+            </div>
+
+            {/* Absence Requests Widget */}
+            <div
+              onClick={() => setActiveTab('absenceRequests')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📝</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>{customTexts.absenceRequestsTabLabel}</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                {absenceRequests.length}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Review absence requests</p>
+            </div>
+
+            {/* Make-Up Submissions Widget */}
+            <div
+              onClick={() => setActiveTab('makeUpSubmissions')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📎</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>{customTexts.makeUpSubmissionsTabLabel}</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                {makeUpSubmissions.length}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Review make-up work</p>
+            </div>
+
+            {/* Files Widget */}
+            <div
+              onClick={() => setActiveTab('files')}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                border: '2px solid #FFE5F1',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 8px 16px rgba(139, 111, 168, 0.15)';
+                e.currentTarget.style.borderColor = '#B380FF';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                e.currentTarget.style.borderColor = '#FFE5F1';
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📁</div>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Files</h3>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
+                📄
+              </div>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage files and archives</p>
+            </div>
+          </div>
+
+          {/* Back to Home Button (when on other tabs) */}
+          {activeTab !== 'overview' && (
+            <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+              <button
+                onClick={() => setActiveTab('overview')}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#8B7FB8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#B380FF';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#8B7FB8';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                ← Back to Home
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       
       <div className="dashboard-content">
         <div className="admin-dashboard">
           
-          {/* Overview Tab */}
-          {activeTab === 'overview' && (
-            <div className="admin-section">
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-                <button
-                  onClick={clearCache}
-                  className="add-dancer-button"
-                  style={{ 
-                    backgroundColor: '#6c757d',
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  Clear Cache
-                </button>
-                <span style={{ fontSize: '0.9rem', color: '#666' }}>
-                  Cache reduces Firebase usage by storing data locally
-                </span>
-              </div>
-              <h2>Audition Management Hub</h2>
-              <div className="overview-cards">
-                <div className="overview-card primary">
-                  <h3>
-                    {currentAudition ? currentAudition.name : 'No Active Audition'}
-                  </h3>
-                  <p>
-                    {currentAudition ? `${currentAudition.dancers} dancers registered` : 'Create an audition to get started'}
-                  </p>
-                </div>
-                <div className="overview-card secondary">
-                  <h3>Total Auditions</h3>
-                  <div className="stat-number">
-                    {auditions.length}
-                  </div>
-                </div>
-                <div className="overview-card success">
-                  <h3>Active Judges</h3>
-                  <div className="stat-number">
-                    {judges.filter(j => j.active).length}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
           
           {/* Auditions Tab */}
           {activeTab === 'auditions' && (
