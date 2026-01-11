@@ -701,11 +701,39 @@ const AdminDashboard: React.FC = () => {
       </div>
       
       <div className="dashboard-header" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', backgroundColor: '#fff', borderBottom: '2px solid #FFE5F1' }}>
-        <div>
-          <h1 className="dashboard-title" style={{ margin: 0, fontSize: '1.8rem', fontWeight: '700', color: '#8B6FA8' }}>Admin Dashboard</h1>
-          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.25rem', margin: 0 }}>
-            Full access for Admins and Secretaries
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          {activeTab !== 'overview' && (
+            <button
+              onClick={() => setActiveTab('overview')}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#8B7FB8',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#B380FF';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#8B7FB8';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              ← Dashboard
+            </button>
+          )}
+          <div>
+            <h1 className="dashboard-title" style={{ margin: 0, fontSize: '1.8rem', fontWeight: '700', color: '#8B6FA8' }}>Admin Dashboard</h1>
+            <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.25rem', margin: 0 }}>
+              Full access for Admins and Secretaries
+            </p>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button 
@@ -996,36 +1024,6 @@ const AdminDashboard: React.FC = () => {
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage files and archives</p>
             </div>
           </div>
-
-          {/* Back to Home Button (when on other tabs) */}
-          {activeTab !== 'overview' && (
-            <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-              <button
-                onClick={() => setActiveTab('overview')}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#8B7FB8',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#B380FF';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#8B7FB8';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                ← Back to Home
-              </button>
-            </div>
-          )}
         </div>
       )}
       
