@@ -5791,16 +5791,25 @@ app.get('/api/files', authenticateToken, async (req, res) => {
     
     // Get all archived items for this club
     try {
-      const archivedSnapshot = await db.collection('archived_files')
-        .where('clubId', '==', clubId)
-        .orderBy('archivedAt', 'desc')
-        .get();
+      let archivedSnapshot;
+      try {
+        archivedSnapshot = await db.collection('archived_files')
+          .where('clubId', '==', clubId)
+          .orderBy('archivedAt', 'desc')
+          .get();
+      } catch (orderByError) {
+        // If orderBy fails (missing index), get without ordering and sort in memory
+        console.warn('OrderBy failed for archived_files, sorting in memory:', orderByError.message);
+        archivedSnapshot = await db.collection('archived_files')
+          .where('clubId', '==', clubId)
+          .get();
+      }
       
+      const archivedFiles = [];
       for (const doc of archivedSnapshot.docs) {
         const archivedData = doc.data();
         
-        files.archived = files.archived || [];
-        files.archived.push({
+        archivedFiles.push({
           id: doc.id,
           type: 'archived',
           name: archivedData.name || 'Archived Item',
@@ -5818,8 +5827,18 @@ app.get('/api/files', authenticateToken, async (req, res) => {
           path: archivedData.filePath
         });
       }
+      
+      // Sort by archivedAt descending if orderBy didn't work
+      archivedFiles.sort((a, b) => {
+        const aDate = new Date(a.archivedAt || a.createdAt).getTime();
+        const bDate = new Date(b.archivedAt || b.createdAt).getTime();
+        return bDate - aDate;
+      });
+      
+      files.archived = archivedFiles;
     } catch (error) {
       console.error('Error fetching archived files:', error);
+      files.archived = [];
     }
     
     res.json(files);
@@ -6035,7 +6054,7 @@ app.post('/api/archive/audition/:id', authenticateToken, async (req, res) => {
     const filename = `archive-${safeAuditionName}-${timestamp}.xlsx`;
     const filePath = path.join(archivesDir, filename);
     
-    // Write file
+    // Write file (XLSX.writeFile works synchronously and writes to disk)
     XLSX.writeFile(workbook, filePath);
     
     const fileStats = fs.statSync(filePath);
