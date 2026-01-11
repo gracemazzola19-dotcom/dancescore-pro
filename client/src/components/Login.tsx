@@ -7,7 +7,7 @@ import VerificationCode from './VerificationCode';
 import PasswordChange from './PasswordChange';
 import ForgotPassword from './ForgotPassword';
 
-type LoginRoleType = 'dancer' | 'eboard' | 'admin' | null;
+type LoginRoleType = 'dancer' | 'eboard' | null;
 
 const Login: React.FC = () => {
   const [selectedRoleType, setSelectedRoleType] = useState<LoginRoleType>(null);
@@ -80,7 +80,7 @@ const Login: React.FC = () => {
       // If email verification is required, send code first (without logging in)
       if (currentVerificationRequired) {
         try {
-          const userType = selectedRoleType === 'admin' ? 'admin' : selectedRoleType === 'eboard' ? 'eboard' : 'dancer';
+          const userType = selectedRoleType === 'eboard' ? 'eboard' : 'dancer';
           console.log('Sending verification code for:', email, 'userType:', userType, 'clubId:', clubId);
           const response = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
             email,
@@ -225,49 +225,42 @@ const Login: React.FC = () => {
   };
 
   const completeLogin = async (userData: any) => {
+    // All eboard members (admin, eboard, coordinators) log in through the same path
+    // Route them based on their actual credentials/position
+    const user = userData.user;
+    
     // Check if user is a coordinator (position contains "Coordinator")
-    const isCoordinator = userData.user?.isCoordinator || 
-                         (userData.user?.position && userData.user.position.includes('Coordinator'));
+    const isCoordinator = user?.isCoordinator || 
+                         (user?.position && user.position.includes('Coordinator'));
+    
+    // Check if user can access admin (admin or secretary role)
+    const canAccessAdmin = user?.canAccessAdmin || 
+                          user?.role === 'admin' || 
+                          user?.role === 'secretary';
+    
+    localStorage.setItem('token', userData.token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setUser(user);
     
     if (isCoordinator) {
-      // Coordinator login - go directly to Coordinator Dashboard (read-only attendance, absence requests, make-up)
-      localStorage.setItem('token', userData.token);
-      localStorage.setItem('user', JSON.stringify(userData.user));
-      setUser(userData.user);
-      toast.success(`Welcome ${userData.user.name}!`);
-      // Use setTimeout to ensure state updates before navigation
+      // Coordinator - go directly to Coordinator Dashboard (read-only attendance, absence requests, make-up)
+      toast.success(`Welcome ${user.name}!`);
       setTimeout(() => {
         window.location.href = '/coordinator';
       }, 100);
-    } else if (selectedRoleType === 'admin') {
-      // Admin login - show view selection (Admin Dashboard OR Judge Dashboard)
-      localStorage.setItem('token', userData.token);
-      localStorage.setItem('user', JSON.stringify(userData.user));
-      setUser(userData.user);
-      
-      // Admins can access both Admin and Judge pages
-      // Show selection screen
+    } else if (canAccessAdmin) {
+      // Admin/Secretary - show view selection (Admin Dashboard OR Judge Dashboard)
       setAvailableViews(['admin', 'judge']);
       setSelectedView('admin'); // Default to admin
       setTempUserData(userData);
       setShowViewSelection(true);
       setLoading(false);
-    } else if (selectedRoleType === 'eboard') {
-      // E-board member login - go directly to Judge Dashboard (no admin access)
-      localStorage.setItem('token', userData.token);
-      localStorage.setItem('user', JSON.stringify(userData.user));
-      console.log('E-board login - userData:', userData);
-      console.log('E-board login - user role:', userData.user.role);
-      setUser(userData.user);
-      toast.success(`Welcome ${userData.user.name}!`);
-      // Use setTimeout to ensure state updates before navigation
+    } else {
+      // Regular eboard member/judge - go directly to Judge Dashboard
+      toast.success(`Welcome ${user.name}!`);
       setTimeout(() => {
-        console.log('Navigating to /judge, user should be:', JSON.parse(localStorage.getItem('user') || '{}'));
         window.location.href = '/judge';
       }, 100);
-    } else {
-      // Should not reach here, but handle just in case
-      setLoading(false);
     }
   };
 
