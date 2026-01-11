@@ -93,7 +93,7 @@ const DancerLogin: React.FC = () => {
             if (response.data.emailFailed) {
               // Email failed - allow login without verification as fallback
               console.warn('Email sending failed, allowing login without verification');
-              toast.warning(response.data.warning || 'Email service unavailable. Proceeding with login without verification.');
+              toast(response.data.warning || 'Email service unavailable. Proceeding with login without verification.');
               // Proceed with normal login
               const loginResponse = await axios.post(
                 `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
@@ -116,7 +116,7 @@ const DancerLogin: React.FC = () => {
           // If verification endpoint fails, allow login without verification as fallback
           console.error('Error sending verification code:', verificationError);
           console.warn('Allowing login without verification due to email service failure');
-          toast.warning('Email service unavailable. Proceeding with login without verification.');
+          toast('Email service unavailable. Proceeding with login without verification.');
           // Proceed with normal login
           const loginResponse = await axios.post(
             `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/dancer-login`,
