@@ -2332,25 +2332,27 @@ app.post('/api/auth/login', async (req, res) => {
     const requiresPasswordChange = !judge.passwordChanged && !judge.password;
     const firstTimeLogin = judge.firstTimeLogin !== false; // Default to true if not set
     
-    // Determine the role to use
-    // If selectedRole is provided (user chose), use that
-    // Otherwise, use their default role from the database
-    let roleToUse = selectedRole || judge.role;
-    
     // Security checks - secretary and admin can access admin features
     const canAccessAdmin = judge.role === 'admin' || judge.role === 'secretary';
     
     // Check if user is a coordinator (position contains "Coordinator")
     const isCoordinator = judge.position && judge.position.includes('Coordinator');
     
+    // Determine the role to use
+    // For users with admin/secretary permissions, always use their actual role from database
+    // Otherwise, use selectedRole if provided, or default to judge.role
+    let roleToUse;
+    if (canAccessAdmin) {
+      // Users with admin permissions should keep their actual role (admin/secretary)
+      roleToUse = judge.role;
+    } else {
+      // For other users, use selectedRole if provided, otherwise use their default role
+      roleToUse = selectedRole || judge.role;
+    }
+    
     if (selectedRole === 'admin' && !canAccessAdmin) {
       console.log('User tried to access admin role without permission:', email);
       return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    
-    // Allow secretary and admin to select any role
-    if (canAccessAdmin && !selectedRole) {
-      // Don't force role, let the frontend decide via canAccessAdmin flag
     }
     
     console.log('✅ Login successful:', { email, role: roleToUse, name: judge.name, clubId, canAccessAdmin, isCoordinator, requiresPasswordChange });
