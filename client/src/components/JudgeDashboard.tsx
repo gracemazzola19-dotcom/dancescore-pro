@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,6 +11,9 @@ interface Dancer {
   email: string;
   group: string;
   hidden?: boolean;
+  videoId?: string;
+  videoUrl?: string;
+  videoGroup?: string;
 }
 
 interface Score {
@@ -52,11 +55,25 @@ const JudgeDashboard: React.FC = () => {
   const [currentAudition, setCurrentAudition] = useState<Audition | null>(null);
   const [canHide, setCanHide] = useState(false);
   const [clubName, setClubName] = useState<string>('MSU Dance Club');
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [groupVideo, setGroupVideo] = useState<{ [group: string]: string | null }>({});
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     fetchDancers();
     fetchSettings();
     fetchCurrentAudition();
+    
+    // Cleanup preview URL when component unmounts
+    return () => {
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -414,6 +431,87 @@ const JudgeDashboard: React.FC = () => {
     }
   };
 
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      toast.error('Please select a video file');
+      return;
+    }
+
+    // Validate file size (500MB limit)
+    const maxSize = 500 * 1024 * 1024; // 500MB
+    if (file.size > maxSize) {
+      toast.error('Video file is too large. Maximum size is 500MB');
+      return;
+    }
+
+    setSelectedVideo(file);
+
+    // Create preview URL
+    const url = URL.createObjectURL(file);
+    setVideoPreviewUrl(url);
+  };
+
+  const uploadVideo = async () => {
+    if (!selectedVideo || !currentAudition?.id || !selectedGroup) {
+      toast.error('Please select a video file and group');
+      return;
+    }
+
+    try {
+      setUploading(true);
+
+      const groupDancers = dancers.filter(d => d.group === selectedGroup);
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('video', selectedVideo);
+      formData.append('group', selectedGroup);
+      formData.append('dancerIds', JSON.stringify(groupDancers.map(d => d.id)));
+      formData.append('description', `Video for ${selectedGroup} - Dancers ${groupDancers.map(d => d.auditionNumber).join(', ')}`);
+
+      await api.post(`/api/auditions/${currentAudition.id}/videos`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      toast.success('Video uploaded successfully!');
+      
+      // Refresh dancers to get updated video info
+      await fetchDancers();
+      
+      // Clear selection
+      setSelectedVideo(null);
+      if (videoPreviewUrl) {
+        URL.revokeObjectURL(videoPreviewUrl);
+        setVideoPreviewUrl(null);
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      console.error('Error uploading video:', error);
+      toast.error('Failed to upload video: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCancelVideo = () => {
+    setSelectedVideo(null);
+    if (videoPreviewUrl) {
+      URL.revokeObjectURL(videoPreviewUrl);
+      setVideoPreviewUrl(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const groups = Array.from(new Set(dancers.map(dancer => dancer.group)))
     .filter(group => group !== 'Unassigned')
     .sort((a, b) => {
@@ -466,6 +564,121 @@ const JudgeDashboard: React.FC = () => {
                 </button>
               ))}
             </div>
+            
+            {/* Video Upload Section */}
+            {selectedGroup && currentAudition && (
+              <div style={{
+                marginTop: '1.5rem',
+                padding: '1rem',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '0.5rem',
+                border: '1px solid #dee2e6'
+              }}>
+                <h4 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '600' }}>
+                  Video for {selectedGroup}
+                </h4>
+                
+                {/* Show existing video if available */}
+                {groupVideo[selectedGroup] && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <video
+                      controls
+                      src={groupVideo[selectedGroup] || undefined}
+                      style={{
+                        width: '100%',
+                        maxWidth: '400px',
+                        borderRadius: '0.5rem',
+                        backgroundColor: '#000'
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {/* Video Upload */}
+                {!selectedVideo ? (
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="video/*"
+                      capture="environment"
+                      onChange={handleVideoSelect}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      style={{
+                        padding: '0.75rem 1.5rem',
+                        fontSize: '0.9rem',
+                        backgroundColor: uploading ? '#6c757d' : '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        cursor: uploading ? 'not-allowed' : 'pointer',
+                        fontWeight: '600',
+                        width: '100%'
+                      }}
+                    >
+                      📹 Record or Select Video
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    {videoPreviewUrl && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <video
+                          ref={videoPreviewRef}
+                          src={videoPreviewUrl}
+                          controls
+                          style={{
+                            width: '100%',
+                            maxWidth: '400px',
+                            borderRadius: '0.5rem',
+                            backgroundColor: '#000'
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={uploadVideo}
+                        disabled={uploading}
+                        style={{
+                          flex: 1,
+                          padding: '0.75rem 1.5rem',
+                          fontSize: '0.9rem',
+                          backgroundColor: uploading ? '#6c757d' : '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '0.5rem',
+                          cursor: uploading ? 'not-allowed' : 'pointer',
+                          fontWeight: '600'
+                        }}
+                      >
+                        {uploading ? 'Uploading...' : 'Upload Video'}
+                      </button>
+                      <button
+                        onClick={handleCancelVideo}
+                        disabled={uploading}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          fontSize: '0.9rem',
+                          backgroundColor: '#6c757d',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '0.5rem',
+                          cursor: uploading ? 'not-allowed' : 'pointer',
+                          fontWeight: '600'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="scoring-panel">

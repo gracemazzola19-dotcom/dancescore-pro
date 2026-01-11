@@ -676,7 +676,10 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
         previousMember: dancerData.previousMember || false,
         previousLevel: dancerData.previousLevel || '',
         averageScore: parseFloat(averageScore.toFixed(2)),
-        scores: scoresByJudge
+        scores: scoresByJudge,
+        videoId: dancerData.videoId || null,
+        videoUrl: dancerData.videoUrl || null,
+        videoGroup: dancerData.videoGroup || null
       });
     }
     
@@ -1314,12 +1317,47 @@ app.post('/api/auditions/:id/videos', authenticateToken, videoUpload.single('vid
     };
 
     const videoRef = await db.collection('audition_videos').add(videoData);
+    const videoId = videoRef.id;
+    const videoUrl = `/api/videos/${videoId}/stream`;
+
+    // Also store video reference in dancers collection (update each dancer with video info)
+    const dancerIdsArray = dancerIds ? (typeof dancerIds === 'string' ? JSON.parse(dancerIds) : dancerIds) : [];
+    
+    if (dancerIdsArray.length > 0) {
+      // Update each dancer document with video reference
+      const updatePromises = dancerIdsArray.map(async (dancerId: string) => {
+        try {
+          const dancerDoc = await db.collection('dancers').doc(dancerId).get();
+          if (dancerDoc.exists) {
+            const dancerData = dancerDoc.data();
+            // Verify dancer belongs to same club
+            if (dancerData.clubId === clubId) {
+              // Update dancer with video reference
+              await db.collection('dancers').doc(dancerId).update({
+                videoId: videoId,
+                videoUrl: videoUrl,
+                videoGroup: group,
+                videoRecordedAt: new Date(),
+                videoRecordedBy: req.user.id,
+                videoRecordedByName: req.user.name || 'Unknown'
+              });
+              console.log(`✅ Updated dancer ${dancerId} with video reference`);
+            }
+          }
+        } catch (error) {
+          console.error(`Error updating dancer ${dancerId} with video:`, error);
+          // Don't fail the upload if dancer update fails
+        }
+      });
+      
+      await Promise.all(updatePromises);
+    }
 
     console.log(`✅ Video uploaded for audition ${auditionId}, group ${group} by ${req.user.id}`);
     res.json({
-      id: videoRef.id,
+      id: videoId,
       ...videoData,
-      videoUrl: `/api/videos/${videoRef.id}/stream` // Use streaming endpoint
+      videoUrl: videoUrl // Use streaming endpoint
     });
   } catch (error) {
     console.error('Error uploading video:', error);
