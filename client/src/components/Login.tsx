@@ -575,66 +575,6 @@ const Login: React.FC = () => {
               Use your email and position as password
             </p>
           </form>
-        ) : (
-          // Step 3: View Selection (for E-board members with multiple views)
-          <div>
-            <p style={{ textAlign: 'center', color: '#8b7fb8', marginBottom: '1.5rem', fontSize: '1rem' }}>
-              Welcome {tempUserData?.user?.name}!
-            </p>
-            <p style={{ textAlign: 'center', color: '#666', marginBottom: '2rem', fontSize: '0.95rem' }}>
-              You have access to multiple views. Please select your dashboard:
-            </p>
-            
-            <div className="form-group">
-              <label className="form-label">Select Dashboard</label>
-              <select
-                className="form-input"
-                value={selectedView}
-                onChange={(e) => setSelectedView(e.target.value)}
-              >
-                {availableViews.includes('admin') && (
-                  <option value="admin">Admin Dashboard</option>
-                )}
-                {availableViews.includes('judge') && (
-                  <option value="judge">Judge Dashboard</option>
-                )}
-              </select>
-            </div>
-            
-            <button
-              onClick={handleViewSelection}
-              className="login-button"
-              disabled={loading}
-            >
-              {loading ? 'Loading...' : 'Continue'}
-            </button>
-            
-            <button
-              onClick={() => {
-                setShowViewSelection(false);
-                setTempUserData(null);
-                setEmail('');
-                setPassword('');
-                setSelectedRoleType(null);
-                setAvailableViews([]);
-                setSelectedView('admin');
-              }}
-              style={{
-                marginTop: '1rem',
-                padding: '0.75rem',
-                width: '100%',
-                borderRadius: '0.5rem',
-                border: '2px solid #d4c5f9',
-                backgroundColor: 'white',
-                color: '#8b7fb8',
-                fontSize: '1rem',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
-              Back to Login
-            </button>
-          </div>
         )}
       </div>
     </div>
