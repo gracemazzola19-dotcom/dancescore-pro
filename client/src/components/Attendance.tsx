@@ -440,8 +440,8 @@ const Attendance: React.FC = () => {
   return (
     <div>
       <div className="admin-section">
-        <h1>Attendance Tracking</h1>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <h2>Attendance Tracking</h2>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1rem' }}>
           <button
             onClick={() => setShowEventForm(true)}
             className="add-dancer-button"
