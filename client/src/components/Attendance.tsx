@@ -431,17 +431,15 @@ const Attendance: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="admin-container">
-        <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <h2>Loading Attendance Data...</h2>
-        </div>
+      <div style={{ textAlign: 'center', padding: '2rem' }}>
+        <h2>Loading Attendance Data...</h2>
       </div>
     );
   }
 
   return (
-    <div className="admin-container">
-      <div className="admin-header">
+    <div>
+      <div className="admin-section">
         <h1>Attendance Tracking</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button
