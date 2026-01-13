@@ -974,6 +974,19 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
       
       for (const scoreDoc of scoresSnapshot.docs) {
         const scoreData = scoreDoc.data();
+        
+        // Skip draft scores (shouldn't happen with query filter, but double-check)
+        if (!scoreData.submitted) {
+          console.log(`   ⚠️ Skipping draft score for dancer ${dancerId}`);
+          continue;
+        }
+        
+        // Skip scores from other auditions (shouldn't happen with query filter, but double-check)
+        if (scoreData.auditionId !== id) {
+          console.log(`   ⚠️ Skipping score from different audition (${scoreData.auditionId}) for dancer ${dancerId}`);
+          continue;
+        }
+        
         const judgeName = scoreData.judgeName || scoreData.judgeId || 'Unknown Judge';
         
         // Handle both nested scores object and flat structure
