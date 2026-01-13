@@ -4686,14 +4686,14 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
     // Otherwise create new score
     let docRef;
     // Ensure auditionId is set - prioritize from request, then from dancer, then log warning
-    const finalAuditionId = auditionId || dancerData.auditionId || null;
-    if (!finalAuditionId) {
+    const scoreAuditionId = auditionId || dancerData.auditionId || null;
+    if (!scoreAuditionId) {
       console.warn(`⚠️ WARNING: Score submission for dancer ${dancerId} has no auditionId! Request had: ${auditionId}, Dancer has: ${dancerData.auditionId}`);
     }
     
     const scoreData = {
       dancerId,
-      auditionId: finalAuditionId,
+      auditionId: scoreAuditionId,
       clubId: clubId, // Multi-tenant: associate with user's club
       judgeId: req.user.id,
       judgeName: req.user.name || req.user.email || req.user.id,
