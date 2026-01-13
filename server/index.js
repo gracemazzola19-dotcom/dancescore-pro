@@ -958,10 +958,13 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
         continue;
       }
       
-      // Fetch scores from the scores collection (filtered by clubId)
+      // Fetch scores from the scores collection (filtered by clubId, auditionId, and submitted status)
+      // IMPORTANT: Only get submitted scores for this specific audition
       const scoresSnapshot = await db.collection('scores')
         .where('clubId', '==', clubId)
         .where('dancerId', '==', dancerId)
+        .where('auditionId', '==', id)
+        .where('submitted', '==', true)
         .get();
       
       // Build scores object by judge and calculate totals
