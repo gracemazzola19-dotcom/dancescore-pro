@@ -3855,45 +3855,44 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
       let scores = {};
       let averageScore = dancerData.overallScore || dancerData.averageScore || 0;
       
-      // If dancer has scores array (score IDs), fetch individual scores from scores collection (filtered by clubId and auditionId)
+      // If dancer has scores array (score IDs), fetch individual scores from scores collection
       if (dancerData.scores && Array.isArray(dancerData.scores) && dancerData.scores.length > 0) {
-        // Build query with clubId and dancerId (required filters)
-        let scoresQuery = db.collection('scores')
-          .where('clubId', '==', clubId) // Filter by clubId for security
-          .where('dancerId', '==', doc.id)
-          .where('submitted', '==', true); // Only get submitted scores, not drafts
+        console.log(`🔍 Dancer ${doc.id} (${dancerData.name}) has ${dancerData.scores.length} score IDs in array`);
         
-        // IMPORTANT: Also filter by auditionId if provided to only get scores for this specific audition
-        // Note: If auditionId is provided, we filter by it. If not provided, we get all scores for the dancer.
-        // This handles cases where scores might not have auditionId set (legacy data)
-        if (auditionId) {
-          scoresQuery = scoresQuery.where('auditionId', '==', auditionId);
+        // SIMPLIFIED: Get ALL submitted scores for this dancer (no auditionId filter in query)
+        // Filter by auditionId in memory after fetching (more lenient approach)
+        const scoresQuery = db.collection('scores')
+          .where('clubId', '==', clubId)
+          .where('dancerId', '==', doc.id)
+          .where('submitted', '==', true);
+        
+        let scoresSnapshot = await scoresQuery.get();
+        console.log(`   📊 Found ${scoresSnapshot.size} submitted scores for ${dancerData.name}`);
+        
+        // Log all found scores for debugging
+        if (scoresSnapshot.size > 0) {
+          scoresSnapshot.docs.forEach(scoreDoc => {
+            const scoreData = scoreDoc.data();
+            console.log(`      - Score ${scoreDoc.id}: auditionId="${scoreData.auditionId || 'NULL'}", judgeId=${scoreData.judgeId}`);
+          });
         }
         
-        const scoresSnapshot = await scoresQuery.get();
-        
-        // If no scores found with auditionId filter, try without it (for legacy scores without auditionId)
-        // But only if we filtered by auditionId and found nothing
-        if (auditionId && scoresSnapshot.empty) {
-          console.log(`No scores found with auditionId ${auditionId} for dancer ${doc.id}, trying without auditionId filter`);
-          const fallbackQuery = db.collection('scores')
-            .where('clubId', '==', clubId)
-            .where('dancerId', '==', doc.id)
-            .where('submitted', '==', true);
-          const fallbackSnapshot = await fallbackQuery.get();
-          
-          // Filter in memory to only include scores that match the auditionId OR have null auditionId
-          // This handles legacy scores that don't have auditionId set
-          const filteredDocs = fallbackSnapshot.docs.filter(scoreDoc => {
+        // If auditionId is provided, filter in memory to only include matching scores
+        // Include scores with null auditionId (legacy) OR matching auditionId
+        if (auditionId && scoresSnapshot.size > 0) {
+          const beforeCount = scoresSnapshot.size;
+          const filteredDocs = scoresSnapshot.docs.filter(scoreDoc => {
             const scoreData = scoreDoc.data();
-            // Include if auditionId matches OR if auditionId is null/undefined (legacy)
-            return !scoreData.auditionId || scoreData.auditionId === auditionId;
+            const scoreAuditionId = scoreData.auditionId;
+            const shouldInclude = !scoreAuditionId || scoreAuditionId === auditionId;
+            if (!shouldInclude) {
+              console.log(`      ⚠️ EXCLUDING score ${scoreDoc.id} - auditionId="${scoreAuditionId}" (expected: "${auditionId}")`);
+            }
+            return shouldInclude;
           });
           
-          if (filteredDocs.length > 0) {
-            console.log(`Found ${filteredDocs.length} scores without auditionId filter for dancer ${doc.id}`);
-            scoresSnapshot = { docs: filteredDocs };
-          }
+          console.log(`   🔄 Filtered from ${beforeCount} to ${filteredDocs.length} scores (auditionId: ${auditionId})`);
+          scoresSnapshot = { docs: filteredDocs, size: filteredDocs.length, empty: filteredDocs.length === 0 };
         }
         
         let totalScore = 0;
