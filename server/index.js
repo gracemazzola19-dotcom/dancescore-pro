@@ -3861,11 +3861,37 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
           .where('submitted', '==', true); // Only get submitted scores, not drafts
         
         // IMPORTANT: Also filter by auditionId if provided to only get scores for this specific audition
+        // Note: If auditionId is provided, we filter by it. If not provided, we get all scores for the dancer.
+        // This handles cases where scores might not have auditionId set (legacy data)
         if (auditionId) {
           scoresQuery = scoresQuery.where('auditionId', '==', auditionId);
         }
         
         const scoresSnapshot = await scoresQuery.get();
+        
+        // If no scores found with auditionId filter, try without it (for legacy scores without auditionId)
+        // But only if we filtered by auditionId and found nothing
+        if (auditionId && scoresSnapshot.empty) {
+          console.log(`No scores found with auditionId ${auditionId} for dancer ${doc.id}, trying without auditionId filter`);
+          const fallbackQuery = db.collection('scores')
+            .where('clubId', '==', clubId)
+            .where('dancerId', '==', doc.id)
+            .where('submitted', '==', true);
+          const fallbackSnapshot = await fallbackQuery.get();
+          
+          // Filter in memory to only include scores that match the auditionId OR have null auditionId
+          // This handles legacy scores that don't have auditionId set
+          const filteredDocs = fallbackSnapshot.docs.filter(scoreDoc => {
+            const scoreData = scoreDoc.data();
+            // Include if auditionId matches OR if auditionId is null/undefined (legacy)
+            return !scoreData.auditionId || scoreData.auditionId === auditionId;
+          });
+          
+          if (filteredDocs.length > 0) {
+            console.log(`Found ${filteredDocs.length} scores without auditionId filter for dancer ${doc.id}`);
+            scoresSnapshot = { docs: filteredDocs };
+          }
+        }
         
         let totalScore = 0;
         let judgeCount = 0;
@@ -3985,7 +4011,9 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
       }
     });
     
-    console.log(`Returning ${dancers.length} dancers with scores`);
+    // Log summary of scores found
+    const totalScores = dancers.reduce((sum, dancer) => sum + Object.keys(dancer.scores || {}).length, 0);
+    console.log(`Returning ${dancers.length} dancers with scores (total ${totalScores} score entries) for auditionId: ${auditionId || 'all'}`);
     res.json(dancers);
   } catch (error) {
     console.error('Error fetching dancers with scores:', error);
