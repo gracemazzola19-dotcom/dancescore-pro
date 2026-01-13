@@ -3816,8 +3816,11 @@ app.get('/api/club-members', authenticateToken, async (req, res) => {
 // Get dancers with scores (for results/audition pages)
 app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
   try {
+    console.log(`\n🚀 ========== /api/dancers-with-scores CALLED ==========`);
+    console.log(`   Query params:`, req.query);
     const clubId = getClubId(req);
     const { auditionId } = req.query;
+    console.log(`   ClubId: ${clubId}, AuditionId: ${auditionId || 'NONE'}`);
     
     // Verify audition belongs to user's club if auditionId provided
     if (auditionId) {
@@ -4013,7 +4016,16 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
     
     // Log summary of scores found
     const totalScores = dancers.reduce((sum, dancer) => sum + Object.keys(dancer.scores || {}).length, 0);
-    console.log(`Returning ${dancers.length} dancers with scores (total ${totalScores} score entries) for auditionId: ${auditionId || 'all'}`);
+    console.log(`\n🎯 FINAL RESULT for /api/dancers-with-scores?auditionId=${auditionId || 'none'}:`);
+    console.log(`   - Dancers: ${dancers.length}`);
+    console.log(`   - Total score entries: ${totalScores}`);
+    dancers.forEach(dancer => {
+      const scoreCount = Object.keys(dancer.scores || {}).length;
+      if (scoreCount > 0) {
+        console.log(`   - ${dancer.name} (#${dancer.auditionNumber}): ${scoreCount} scores`);
+      }
+    });
+    console.log(`\n`);
     res.json(dancers);
   } catch (error) {
     console.error('Error fetching dancers with scores:', error);
