@@ -647,9 +647,11 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
     if (dancerIds.length > 0) {
       // Firestore queries: Filter by auditionId and clubId, then filter by dancerId in memory
       // This ensures we only get scores for this specific audition
+      // IMPORTANT: Only get submitted scores, not drafts
       const scoresSnapshot = await db.collection('scores')
         .where('clubId', '==', clubId)
         .where('auditionId', '==', id)
+        .where('submitted', '==', true)
         .get();
       
       // Filter by dancerId in memory (since we can't use 'in' with multiple where clauses efficiently)
@@ -667,6 +669,12 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
     const scoresByDancerId = {};
     for (const scoreDoc of allScoresSnapshot.docs) {
       const scoreData = scoreDoc.data();
+      
+      // Skip draft scores (shouldn't happen with query filter, but double-check)
+      if (!scoreData.submitted) {
+        continue;
+      }
+      
       const dancerId = scoreData.dancerId;
       if (!scoresByDancerId[dancerId]) {
         scoresByDancerId[dancerId] = [];
@@ -3849,7 +3857,8 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
         // Build query with clubId and dancerId (required filters)
         let scoresQuery = db.collection('scores')
           .where('clubId', '==', clubId) // Filter by clubId for security
-          .where('dancerId', '==', doc.id);
+          .where('dancerId', '==', doc.id)
+          .where('submitted', '==', true); // Only get submitted scores, not drafts
         
         // IMPORTANT: Also filter by auditionId if provided to only get scores for this specific audition
         if (auditionId) {
@@ -3863,6 +3872,11 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
       
       for (const scoreDoc of scoresSnapshot.docs) {
         const scoreData = scoreDoc.data();
+        
+        // Skip draft scores (shouldn't happen with query filter, but double-check)
+        if (!scoreData.submitted) {
+          continue;
+        }
         
         // Try to get judge name - check judgeName, then judgeEmail, then look up by judgeId
         let judgeName = scoreData.judgeName;
@@ -4687,7 +4701,7 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
     }
     
     const savedData = savedDoc.data();
-    console.log(`✅ Score verified saved: ID ${docRef.id}, submitted: ${savedData.submitted}, dancerId: ${savedData.dancerId}, judgeId: ${savedData.judgeId}`);
+    console.log(`✅ Score verified saved: ID ${docRef.id}, submitted: ${savedData.submitted}, dancerId: ${savedData.dancerId}, judgeId: ${savedData.judgeId}, auditionId: ${savedData.auditionId || 'MISSING'}`);
     
     // Clear cache for this audition's dancers when scores are submitted
     const finalAuditionId = auditionId || dancerData.auditionId;
