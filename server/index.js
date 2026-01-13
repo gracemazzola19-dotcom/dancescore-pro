@@ -6251,6 +6251,31 @@ app.post('/api/archive/audition/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Test endpoint: Create test audition with 20 dancers and 9 scores each
+app.post('/api/admin/create-test-audition', authenticateToken, async (req, res) => {
+  try {
+    // Only allow admins or users with admin access
+    if (req.user.role !== 'admin' && req.user.role !== 'secretary' && !req.user.canAccessAdmin) {
+      return res.status(403).json({ error: 'Access denied: Admin privileges required' });
+    }
+    
+    const clubId = getClubId(req);
+    const createTestAudition = require('./create-test-audition-20-dancers');
+    
+    // Run the script and capture the result
+    const result = await createTestAudition(clubId);
+    
+    res.json({
+      success: true,
+      message: 'Test audition created successfully',
+      ...result
+    });
+  } catch (error) {
+    console.error('Error creating test audition:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
