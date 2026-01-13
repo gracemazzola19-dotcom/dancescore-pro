@@ -3844,12 +3844,19 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
       let scores = {};
       let averageScore = dancerData.overallScore || dancerData.averageScore || 0;
       
-      // If dancer has scores array (score IDs), fetch individual scores from scores collection (filtered by clubId)
+      // If dancer has scores array (score IDs), fetch individual scores from scores collection (filtered by clubId and auditionId)
       if (dancerData.scores && Array.isArray(dancerData.scores) && dancerData.scores.length > 0) {
-        const scoresSnapshot = await db.collection('scores')
+        // Build query with clubId and dancerId (required filters)
+        let scoresQuery = db.collection('scores')
           .where('clubId', '==', clubId) // Filter by clubId for security
-          .where('dancerId', '==', doc.id)
-          .get();
+          .where('dancerId', '==', doc.id);
+        
+        // IMPORTANT: Also filter by auditionId if provided to only get scores for this specific audition
+        if (auditionId) {
+          scoresQuery = scoresQuery.where('auditionId', '==', auditionId);
+        }
+        
+        const scoresSnapshot = await scoresQuery.get();
         
         let totalScore = 0;
         let judgeCount = 0;
