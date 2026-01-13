@@ -1,5 +1,6 @@
 const dbAdapter = require('./database-adapter');
 const db = dbAdapter;
+const admin = require('firebase-admin');
 
 async function resubmitTestAuditionScores(clubId = 'msu-dance-club', auditionId = null) {
   console.log('🔄 RESUBMITTING SCORES FOR TEST AUDITION');
@@ -105,25 +106,51 @@ async function resubmitTestAuditionScores(clubId = 'msu-dance-club', auditionId 
     
     console.log(`✅ Using ${judges.length} judges: ${judges.map(j => j.name).join(', ')}`);
     
-    // Delete existing scores for these dancers
+    // Delete existing scores for these dancers (handle Firestore batch limit of 500)
     console.log('\n4. Deleting existing scores...');
     const existingScoresSnapshot = await db.collection('scores')
       .where('clubId', '==', clubId)
       .where('auditionId', '==', targetAuditionId)
       .get();
     
-    const batch = db.batch();
     let deleteCount = 0;
-    existingScoresSnapshot.docs.forEach(doc => {
-      batch.delete(doc.ref);
-      deleteCount++;
-    });
-    
-    if (deleteCount > 0) {
-      await batch.commit();
+    if (existingScoresSnapshot.size > 0) {
+      // Firestore batch limit is 500, so we need to batch in chunks
+      const allDocs = existingScoresSnapshot.docs;
+      const batchSize = 500;
+      
+      for (let i = 0; i < allDocs.length; i += batchSize) {
+        const batch = db.batch();
+        const batchDocs = allDocs.slice(i, i + batchSize);
+        
+        batchDocs.forEach(doc => {
+          batch.delete(doc.ref);
+          deleteCount++;
+        });
+        
+        await batch.commit();
+        console.log(`   Deleted batch ${Math.floor(i / batchSize) + 1} (${batchDocs.length} scores)`);
+      }
+      
       console.log(`✅ Deleted ${deleteCount} existing scores`);
     } else {
       console.log(`ℹ️  No existing scores to delete`);
+    }
+    
+    // Also clear dancer scores arrays
+    console.log('\n4b. Clearing dancer scores arrays...');
+    const updateBatch = db.batch();
+    let updateCount = 0;
+    dancers.forEach(dancer => {
+      updateBatch.update(db.collection('dancers').doc(dancer.id), {
+        scores: []
+      });
+      updateCount++;
+    });
+    
+    if (updateCount > 0) {
+      await updateBatch.commit();
+      console.log(`✅ Cleared scores arrays for ${updateCount} dancers`);
     }
     
     // Generate new scores for each dancer from each judge
@@ -160,11 +187,18 @@ async function resubmitTestAuditionScores(clubId = 'msu-dance-club', auditionId 
         
         const scoreRef = await db.collection('scores').add(scoreData);
         
+        // Update dancer's scores array
+        await db.collection('dancers').doc(dancer.id).update({
+          scores: admin.firestore.FieldValue.arrayUnion(scoreRef.id)
+        });
+        
         // Verify the score was saved correctly
         const savedScore = await scoreRef.get();
         const savedData = savedScore.data();
         if (savedData.auditionId !== targetAuditionId) {
           console.error(`   ⚠️  WARNING: Score ${scoreRef.id} saved with wrong auditionId: ${savedData.auditionId} (expected: ${targetAuditionId})`);
+        } else {
+          console.log(`      ✅ Score ${scoreRef.id} saved with correct auditionId: ${targetAuditionId}`);
         }
         
         totalScoresAdded++;
