@@ -1095,7 +1095,8 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
       };
       
       // Create club member record with level assignment using database adapter
-      await db.collection('club_members').add(clubMemberData);
+      const memberRef = await db.collection('club_members').add(clubMemberData);
+      console.log(`   ✅ Transferred ${dancer.name} (#${dancer.auditionNumber}) to club_members - Level: ${assignedLevel}, Score: ${averageScore.toFixed(2)}`);
     }
     
     // Update audition status to completed
