@@ -78,7 +78,7 @@ const AbsenceRequest: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       setMakeUpFile(file);
-      // Create a preview URL
+      // Create a preview URL (for display only, not for upload)
       const reader = new FileReader();
       reader.onloadend = () => {
         setMakeUpUrl(reader.result as string);
@@ -95,37 +95,46 @@ const AbsenceRequest: React.FC = () => {
       return;
     }
 
+    if (!makeUpFile) {
+      setError('Please select a file to upload');
+      return;
+    }
+
     try {
       setSubmittingMakeUp(true);
       setError(null);
 
-      // Convert file to base64 if provided
-      let makeUpDataUrl = makeUpUrl;
-
-      console.log('Submitting make-up with data:', {
+      console.log('Submitting make-up with FormData:', {
         absenceRequestId: requestId,
         eventId,
         dancerName: formData.name.trim(),
         dancerLevel: formData.level.trim()
       });
 
-      // Submit make-up
-      await api.post('/api/make-up-submissions', {
-        absenceRequestId: requestId || 'pending',
-        eventId,
-        dancerName: formData.name.trim(),
-        dancerLevel: formData.level.trim(),
-        makeUpUrl: makeUpDataUrl,
-        sentToCoordinator: sentToCoordinator
+      // Create FormData for multipart/form-data upload
+      const formDataObj = new FormData();
+      formDataObj.append('makeUpFile', makeUpFile);
+      formDataObj.append('absenceRequestId', requestId || 'pending');
+      formDataObj.append('eventId', eventId || '');
+      formDataObj.append('dancerName', formData.name.trim());
+      formDataObj.append('dancerLevel', formData.level.trim());
+      formDataObj.append('sentToCoordinator', sentToCoordinator.toString());
+
+      // Submit make-up using FormData (multipart/form-data)
+      await api.post('/api/make-up-submissions', formDataObj, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
       console.log('Make-up submitted successfully');
       setShowMakeUpPopup(false);
       setSubmitted(true);
       toast.success('Make-up work submitted successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting make-up:', error);
       setError('Failed to submit make-up. Please try again.');
+      toast.error('Failed to submit make-up: ' + (error.response?.data?.error || error.message));
     } finally {
       setSubmittingMakeUp(false);
     }
