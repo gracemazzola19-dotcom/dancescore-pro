@@ -67,9 +67,8 @@ const JudgeDashboard: React.FC = () => {
   const pendingSaves = useRef<{ [dancerId: string]: boolean }>({});
 
   useEffect(() => {
-    fetchDancers();
     fetchSettings();
-    fetchCurrentAudition();
+    fetchCurrentAudition(); // This will fetch dancers when active audition is found
     
     // Cleanup preview URL when component unmounts
     return () => {
@@ -164,6 +163,11 @@ const JudgeDashboard: React.FC = () => {
       const activeAudition = auditions.find((audition: Audition) => audition.status === 'active');
       if (activeAudition) {
         setCurrentAudition(activeAudition);
+        // Fetch dancers for the active audition
+        fetchDancersForAudition(activeAudition.id);
+      } else {
+        // No active audition, clear dancers
+        setDancers([]);
       }
     } catch (error) {
       console.error('Error fetching current audition:', error);
@@ -192,13 +196,23 @@ const JudgeDashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dancers, selectedGroup]);
 
-  const fetchDancers = async () => {
+  const fetchDancersForAudition = async (auditionId: string) => {
     try {
-      const response = await api.get('/api/dancers');
+      const response = await api.get(`/api/auditions/${auditionId}/dancers`);
       setDancers(response.data);
     } catch (error) {
-      console.error('Error fetching dancers:', error);
+      console.error('Error fetching dancers for audition:', error);
       toast.error('Failed to fetch dancers');
+      setDancers([]);
+    }
+  };
+
+  // Legacy function name for compatibility - redirects to fetchDancersForAudition
+  const fetchDancers = async () => {
+    // This should not be called directly anymore
+    // Dancers are fetched when the active audition is found
+    if (currentAudition) {
+      fetchDancersForAudition(currentAudition.id);
     }
   };
 
