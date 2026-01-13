@@ -70,12 +70,20 @@ const JudgeDashboard: React.FC = () => {
     fetchSettings();
     fetchCurrentAudition(); // This will fetch dancers when active audition is found
     
-    // Cleanup preview URL when component unmounts
+    // Poll for active audition status changes every 10 seconds
+    // This ensures judges see updates when an audition becomes inactive
+    const pollInterval = setInterval(() => {
+      fetchCurrentAudition();
+    }, 10000); // Check every 10 seconds
+    
+    // Cleanup preview URL and polling interval when component unmounts
     return () => {
+      clearInterval(pollInterval);
       if (videoPreviewUrl) {
         URL.revokeObjectURL(videoPreviewUrl);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -161,16 +169,42 @@ const JudgeDashboard: React.FC = () => {
       const auditions = response.data;
       // Find the active audition
       const activeAudition = auditions.find((audition: Audition) => audition.status === 'active');
+      
       if (activeAudition) {
-        setCurrentAudition(activeAudition);
-        // Fetch dancers for the active audition
-        fetchDancersForAudition(activeAudition.id);
+        // Check if this is a different audition than the current one
+        setCurrentAudition((prevAudition) => {
+          if (!prevAudition || prevAudition.id !== activeAudition.id) {
+            // Different audition or no previous audition, fetch dancers
+            // Use setTimeout to avoid state update issues
+            setTimeout(() => {
+              fetchDancersForAudition(activeAudition.id);
+            }, 0);
+          }
+          return activeAudition;
+        });
       } else {
-        // No active audition, clear dancers
-        setDancers([]);
+        // No active audition, clear everything
+        setCurrentAudition((prevAudition) => {
+          if (prevAudition) {
+            // Audition was active but is no longer active - clear all state
+            // Use setTimeout to avoid state update issues
+            setTimeout(() => {
+              setDancers([]);
+              setCurrentDancers([]);
+              setSelectedGroup('');
+            }, 0);
+          } else {
+            // Already cleared, just ensure dancers are empty
+            setDancers([]);
+          }
+          return null;
+        });
       }
     } catch (error) {
       console.error('Error fetching current audition:', error);
+      // On error, clear state to be safe
+      setCurrentAudition(null);
+      setDancers([]);
     }
   };
 
