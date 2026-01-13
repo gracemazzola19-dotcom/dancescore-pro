@@ -639,25 +639,26 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
       .get();
     
     // OPTIMIZATION: Batch fetch all scores for all dancers at once
+    // IMPORTANT: Filter by auditionId to only get scores for this specific audition
     const dancerIds = dancersSnapshot.docs.map(doc => doc.id);
     
-    // Fetch all scores for this audition in one query (filtered by clubId)
+    // Fetch all scores for this audition (filtered by clubId AND auditionId)
     let allScoresSnapshot;
     if (dancerIds.length > 0) {
-      // Firestore 'in' queries are limited to 10 items, so we need to batch
-      const scoreQueries = [];
-      for (let i = 0; i < dancerIds.length; i += 10) {
-        const batchIds = dancerIds.slice(i, i + 10);
-        scoreQueries.push(
-          db.collection('scores')
-            .where('clubId', '==', clubId)
-            .where('dancerId', 'in', batchIds)
-            .get()
-        );
-      }
-      const scoreResults = await Promise.all(scoreQueries);
-      // Combine all score documents
-      allScoresSnapshot = { docs: scoreResults.flatMap(result => result.docs) };
+      // Firestore queries: Filter by auditionId and clubId, then filter by dancerId in memory
+      // This ensures we only get scores for this specific audition
+      const scoresSnapshot = await db.collection('scores')
+        .where('clubId', '==', clubId)
+        .where('auditionId', '==', id)
+        .get();
+      
+      // Filter by dancerId in memory (since we can't use 'in' with multiple where clauses efficiently)
+      const filteredScores = scoresSnapshot.docs.filter(doc => {
+        const scoreData = doc.data();
+        return dancerIds.includes(scoreData.dancerId);
+      });
+      
+      allScoresSnapshot = { docs: filteredScores };
     } else {
       allScoresSnapshot = { docs: [] };
     }
@@ -1111,14 +1112,44 @@ app.delete('/api/auditions/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
     }
     
-    // Optional: Delete associated data (dancers linked to this audition) filtered by clubId
-    // For now, we'll just delete the audition document
-    // You may want to add logic to handle dancers associated with this audition
+    // Delete associated data (dancers and scores linked to this audition) filtered by clubId
+    // Get all dancers for this audition
+    const dancersSnapshot = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
     
+    // Get all scores for this audition
+    const scoresSnapshot = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    
+    // Delete scores in batches (Firestore batch limit is 500)
+    const allDocsToDelete = [...scoresSnapshot.docs, ...dancersSnapshot.docs];
+    
+    if (allDocsToDelete.length > 0) {
+      // Delete in batches of 500 (Firestore limit)
+      for (let i = 0; i < allDocsToDelete.length; i += 500) {
+        const batch = dbAdapter.batch();
+        const batchDocs = allDocsToDelete.slice(i, i + 500);
+        batchDocs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+      }
+    }
+    
+    // Delete the audition document
     await db.collection('auditions').doc(id).delete();
     
     console.log(`✅ Audition ${id} deleted successfully by ${req.user.id}`);
-    res.json({ message: 'Audition deleted successfully' });
+    console.log(`   Deleted ${dancersSnapshot.size} dancers and ${scoresSnapshot.size} scores`);
+    res.json({ 
+      message: 'Audition deleted successfully',
+      deletedDancers: dancersSnapshot.size,
+      deletedScores: scoresSnapshot.size
+    });
   } catch (error) {
     console.error('❌ Error deleting audition:', error);
     res.status(500).json({ error: error.message });
