@@ -4807,8 +4807,9 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
     
     // Log summary of scores found
     const totalScores = dancers.reduce((sum, dancer) => sum + Object.keys(dancer.scores || {}).length, 0);
+    const previousSeasonCount = previousSeasonMembersSnapshot.docs.length;
     console.log(`\n🎯 FINAL RESULT for /api/dancers-with-scores?auditionId=${auditionId || 'none'}:`);
-    console.log(`   - Dancers: ${dancers.length}`);
+    console.log(`   - Dancers: ${dancers.length} (${dancersSnapshot.size} from dancers collection, ${previousSeasonCount} from previous seasons)`);
     console.log(`   - Total score entries: ${totalScores}`);
     dancers.forEach(dancer => {
       const scoreCount = Object.keys(dancer.scores || {}).length;
