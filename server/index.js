@@ -1356,6 +1356,196 @@ app.get('/api/admin/audition-health/:id', authenticateToken, async (req, res) =>
 // AUDITION ROUTES
 // ============================================================================
 
+// Get previous season dancers (club members from other auditions)
+app.get('/api/auditions/:id/previous-season-dancers', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    // Verify audition exists and belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Audition not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
+    }
+    
+    // Get all club members from previous auditions (not this one)
+    const previousMembersSnapshot = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .get();
+    
+    const previousDancers = [];
+    for (const doc of previousMembersSnapshot.docs) {
+      const memberData = doc.data();
+      
+      // Skip members from the current audition
+      if (memberData.auditionId === id) {
+        continue;
+      }
+      
+      previousDancers.push({
+        id: doc.id,
+        name: memberData.name || '',
+        email: memberData.email || '',
+        phone: memberData.phone || '',
+        shirtSize: memberData.shirtSize || '',
+        level: memberData.level || memberData.assignedLevel || 'Level 4',
+        previousLevel: memberData.previousLevel || '',
+        averageScore: memberData.averageScore || memberData.overallScore || 0,
+        scores: memberData.scores || {},
+        auditionId: memberData.auditionId || null,
+        auditionName: memberData.auditionName || 'Previous Season',
+        auditionDate: memberData.auditionDate || '',
+        transferredAt: memberData.transferredAt || null
+      });
+    }
+    
+    // Sort by name for easier selection
+    previousDancers.sort((a, b) => a.name.localeCompare(b.name));
+    
+    res.json({
+      previousDancers,
+      count: previousDancers.length
+    });
+  } catch (error) {
+    logErrorWithContext(error, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add previous season dancers to current audition deliberations
+app.post('/api/auditions/:id/add-previous-season-dancers', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    const { memberIds, levelAssignments } = req.body; // memberIds: array of club_member IDs to add
+    
+    if (!memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+      return res.status(400).json({ error: 'memberIds array is required' });
+    }
+    
+    // Verify audition exists and belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Audition not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
+    }
+    
+    const addedMembers = [];
+    const errors = [];
+    
+    for (const memberId of memberIds) {
+      try {
+        // Get the previous season member
+        const memberDoc = await db.collection('club_members').doc(memberId).get();
+        if (!memberDoc.exists) {
+          errors.push({ memberId, error: 'Member not found' });
+          continue;
+        }
+        
+        const memberData = memberDoc.data();
+        
+        // Verify member belongs to same club
+        if (memberData.clubId && memberData.clubId !== clubId) {
+          errors.push({ memberId, error: 'Member belongs to different club' });
+          continue;
+        }
+        
+        // Check if member already exists for this audition
+        const existingMember = await db.collection('club_members')
+          .where('clubId', '==', clubId)
+          .where('auditionId', '==', id)
+          .where('email', '==', memberData.email || '')
+          .get();
+        
+        if (!existingMember.empty) {
+          errors.push({ memberId, name: memberData.name, error: 'Already added to this audition' });
+          continue;
+        }
+        
+        // Get level assignment for this member (from request or use existing level)
+        const assignedLevel = levelAssignments?.[memberId] || memberData.level || memberData.assignedLevel || 'Level 4';
+        
+        // Create new club member record for this audition
+        const newMemberData = {
+          id: String(memberId), // Keep reference to original member
+          name: String(memberData.name || ''),
+          email: String(memberData.email || ''),
+          phone: String(memberData.phone || ''),
+          shirtSize: String(memberData.shirtSize || ''),
+          auditionNumber: String(memberData.auditionNumber || ''),
+          dancerGroup: String(memberData.dancerGroup || ''),
+          averageScore: Number(memberData.averageScore || memberData.overallScore || 0),
+          rank: Number(memberData.rank || 0),
+          previousMember: 'yes',
+          previousLevel: String(memberData.level || memberData.assignedLevel || memberData.previousLevel || ''),
+          level: String(assignedLevel),
+          assignedLevel: String(assignedLevel),
+          clubId: clubId,
+          auditionId: String(id),
+          auditionName: String(auditionData.name || ''),
+          auditionDate: String(auditionData.date || ''),
+          transferredAt: new Date().toISOString(),
+          transferredBy: String(req.user?.id || 'admin'),
+          deliberationPhase: 1,
+          overallScore: Number(memberData.averageScore || memberData.overallScore || 0),
+          scores: memberData.scores || {},
+          fromPreviousSeason: true,
+          previousSeasonAuditionId: memberData.auditionId || null,
+          previousSeasonAuditionName: memberData.auditionName || 'Previous Season'
+        };
+        
+        const memberRef = await db.collection('club_members').add(newMemberData);
+        addedMembers.push({
+          id: memberRef.id,
+          name: memberData.name,
+          level: assignedLevel,
+          previousLevel: memberData.level || memberData.assignedLevel || ''
+        });
+        
+        console.log(`   ✅ Added previous season dancer ${memberData.name} - Previous: ${memberData.level || 'N/A'}, New: ${assignedLevel}`);
+      } catch (error) {
+        errors.push({ memberId, error: error.message });
+        console.error(`   ❌ Error adding member ${memberId}:`, error);
+      }
+    }
+    
+    // Log audit event
+    await logAuditEvent('previous_season_dancers_added', {
+      auditionId: id,
+      auditionName: auditionData.name,
+      addedCount: addedMembers.length,
+      memberIds: memberIds
+    }, req.user.id, clubId, req);
+    
+    res.json({
+      success: true,
+      message: `Successfully added ${addedMembers.length} previous season dancer(s)`,
+      added: addedMembers,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    const errorContext = logErrorWithContext(error, req, { 
+      operation: 'add_previous_season_dancers',
+      auditionId: id 
+    });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Failed to add previous season dancers. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
+  }
+});
+
 // Submit deliberations and move to club database
 app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (req, res) => {
   try {
@@ -1532,12 +1722,27 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
     });
     
     // Clear existing club members for this audition and club to avoid duplicates
+    // BUT preserve members marked as fromPreviousSeason (they were manually added)
     const existingMembers = await db.collection('club_members')
       .where('clubId', '==', clubId)
       .where('auditionId', '==', id)
       .get();
+    
+    let deletedCount = 0;
+    let preservedCount = 0;
     for (const memberDoc of existingMembers.docs) {
+      const memberData = memberDoc.data();
+      // Preserve previous season dancers that were manually added
+      if (memberData.fromPreviousSeason === true) {
+        preservedCount++;
+        continue;
+      }
       await db.collection('club_members').doc(memberDoc.id).delete();
+      deletedCount++;
+    }
+    
+    if (preservedCount > 0) {
+      console.log(`   ℹ️  Preserved ${preservedCount} previous season dancer(s) from deletion`);
     }
     
     // Transfer dancers to club members collection with level assignments
