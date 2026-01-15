@@ -363,21 +363,47 @@ const Deliberations: React.FC = () => {
       const refreshedDancers = await fetchDancers();
       
       // Update level assignments to include new dancers
+      const newAssignments: { [dancerId: string]: string } = {};
       response.data.added.forEach((added: any) => {
         // Find the newly added dancer in the refreshed list by matching name
         const newDancer = refreshedDancers.find((d: Dancer) => d.name === added.name);
         if (newDancer) {
-          setLevelAssignments(prev => ({
-            ...prev,
-            [newDancer.id]: added.level
-          }));
+          newAssignments[newDancer.id] = added.level;
         }
       });
+
+      // Update level assignments and counts
+      if (Object.keys(newAssignments).length > 0) {
+        setLevelAssignments(prev => {
+          const updated = { ...prev, ...newAssignments };
+          return updated;
+        });
+        
+        // Update level counts
+        setLevelCounts(prev => {
+          const updated = { ...prev };
+          Object.values(newAssignments).forEach(level => {
+            updated[level] = (updated[level] || 0) + 1;
+          });
+          return updated;
+        });
+      }
 
       // Reset selection
       setSelectedPreviousDancers(new Set());
       setPreviousDancerLevels({});
       setShowPreviousSeason(false);
+      
+      // Also update manual order to include new dancers
+      if (refreshedDancers.length > 0) {
+        const newDancerIds = refreshedDancers.map(d => d.id);
+        setManualOrder(prev => {
+          // Keep existing order, add new dancers at the end
+          const existingIds = new Set(prev);
+          const newIds = newDancerIds.filter(id => !existingIds.has(id));
+          return [...prev, ...newIds];
+        });
+      }
     } catch (error: any) {
       console.error('Error adding previous season dancers:', error);
       toast.error(error.response?.data?.error || 'Failed to add previous season dancers');
