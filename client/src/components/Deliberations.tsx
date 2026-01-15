@@ -396,7 +396,7 @@ const Deliberations: React.FC = () => {
       
       // Also update manual order to include new dancers
       if (refreshedDancers.length > 0) {
-        const newDancerIds = refreshedDancers.map(d => d.id);
+        const newDancerIds = refreshedDancers.map((d: Dancer) => d.id);
         setManualOrder(prev => {
           // Keep existing order, add new dancers at the end
           const existingIds = new Set(prev);
