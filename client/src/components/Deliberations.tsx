@@ -66,6 +66,13 @@ const Deliberations: React.FC = () => {
   const [loadingPreviousSeason, setLoadingPreviousSeason] = useState(false);
   const [selectedPreviousDancers, setSelectedPreviousDancers] = useState<Set<string>>(new Set());
   const [previousDancerLevels, setPreviousDancerLevels] = useState<{ [memberId: string]: string }>({});
+  
+  // Previous season dancers state
+  const [showPreviousSeason, setShowPreviousSeason] = useState(false);
+  const [previousSeasonDancers, setPreviousSeasonDancers] = useState<any[]>([]);
+  const [loadingPreviousSeason, setLoadingPreviousSeason] = useState(false);
+  const [selectedPreviousDancers, setSelectedPreviousDancers] = useState<Set<string>>(new Set());
+  const [previousDancerLevels, setPreviousDancerLevels] = useState<{ [memberId: string]: string }>({});
 
   const fetchAuditionDetails = async () => {
     try {
@@ -314,6 +321,95 @@ const Deliberations: React.FC = () => {
         newSet.delete(dancerId);
     } else {
         newSet.add(dancerId);
+      }
+      return newSet;
+    });
+  };
+
+  const fetchPreviousSeasonDancers = async () => {
+    if (!id) return;
+    
+    setLoadingPreviousSeason(true);
+    try {
+      const response = await api.get(`/api/auditions/${id}/previous-season-dancers`);
+      setPreviousSeasonDancers(response.data.previousDancers || []);
+      setShowPreviousSeason(true);
+    } catch (error) {
+      console.error('Error fetching previous season dancers:', error);
+      toast.error('Failed to fetch previous season dancers');
+    } finally {
+      setLoadingPreviousSeason(false);
+    }
+  };
+
+  const handleAddPreviousSeasonDancers = async () => {
+    if (selectedPreviousDancers.size === 0) {
+      toast.error('Please select at least one dancer to add');
+      return;
+    }
+
+    if (!id) return;
+
+    try {
+      const memberIds = Array.from(selectedPreviousDancers);
+      const levelAssignmentsForPrevious: { [key: string]: string } = {};
+      
+      // Get level assignments for selected dancers
+      memberIds.forEach(memberId => {
+        levelAssignmentsForPrevious[memberId] = previousDancerLevels[memberId] || 'Level 4';
+      });
+
+      const response = await api.post(`/api/auditions/${id}/add-previous-season-dancers`, {
+        memberIds,
+        levelAssignments: levelAssignmentsForPrevious
+      });
+
+      toast.success(`Successfully added ${response.data.added.length} previous season dancer(s)`);
+      
+      // Refresh dancers list
+      const refreshedDancers = await fetchDancers();
+      
+      // Update level assignments to include new dancers
+      response.data.added.forEach((added: any) => {
+        // Find the newly added dancer in the refreshed list by matching name
+        const newDancer = refreshedDancers.find((d: Dancer) => d.name === added.name);
+        if (newDancer) {
+          setLevelAssignments(prev => ({
+            ...prev,
+            [newDancer.id]: added.level
+          }));
+        }
+      });
+
+      // Reset selection
+      setSelectedPreviousDancers(new Set());
+      setPreviousDancerLevels({});
+      setShowPreviousSeason(false);
+    } catch (error: any) {
+      console.error('Error adding previous season dancers:', error);
+      toast.error(error.response?.data?.error || 'Failed to add previous season dancers');
+    }
+  };
+
+  const togglePreviousDancerSelection = (memberId: string) => {
+    setSelectedPreviousDancers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(memberId)) {
+        newSet.delete(memberId);
+        // Remove level assignment
+        setPreviousDancerLevels(prevLevels => {
+          const newLevels = { ...prevLevels };
+          delete newLevels[memberId];
+          return newLevels;
+        });
+      } else {
+        newSet.add(memberId);
+        // Set default level
+        const dancer = previousSeasonDancers.find(d => d.id === memberId);
+        setPreviousDancerLevels(prevLevels => ({
+          ...prevLevels,
+          [memberId]: dancer?.level || 'Level 4'
+        }));
       }
       return newSet;
     });
@@ -568,6 +664,146 @@ const Deliberations: React.FC = () => {
               </div>
             );
           })()}
+        </div>
+
+        {/* Previous Season Dancers Section */}
+        <div className="admin-section">
+          <div style={{ 
+            backgroundColor: '#fff3cd', 
+            border: '1px solid #ffc107', 
+            borderRadius: '0.5rem', 
+            padding: '1rem', 
+            marginBottom: '2rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, color: '#856404' }}>Add Previous Season Dancers</h3>
+              <button
+                onClick={fetchPreviousSeasonDancers}
+                disabled={loadingPreviousSeason}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#ffc107',
+                  color: '#856404',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  cursor: loadingPreviousSeason ? 'not-allowed' : 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                {loadingPreviousSeason ? 'Loading...' : showPreviousSeason ? 'Refresh List' : 'View Previous Season Dancers'}
+              </button>
+            </div>
+            
+            {showPreviousSeason && previousSeasonDancers.length > 0 && (
+              <div>
+                <p style={{ marginBottom: '1rem', color: '#856404' }}>
+                  Select dancers from previous seasons to add to this audition. They will keep their existing scores and you can assign new levels.
+                </p>
+                
+                <div style={{ 
+                  maxHeight: '300px', 
+                  overflowY: 'auto', 
+                  border: '1px solid #dee2e6', 
+                  borderRadius: '0.25rem',
+                  padding: '0.5rem',
+                  marginBottom: '1rem',
+                  backgroundColor: 'white'
+                }}>
+                  {previousSeasonDancers.map((dancer) => (
+                    <div 
+                      key={dancer.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.75rem',
+                        marginBottom: '0.5rem',
+                        backgroundColor: selectedPreviousDancers.has(dancer.id) ? '#e7f3ff' : '#f8f9fa',
+                        border: selectedPreviousDancers.has(dancer.id) ? '2px solid #007bff' : '1px solid #dee2e6',
+                        borderRadius: '0.25rem',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => togglePreviousDancerSelection(dancer.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPreviousDancers.has(dancer.id)}
+                        onChange={() => togglePreviousDancerSelection(dancer.id)}
+                        style={{ marginRight: '1rem', cursor: 'pointer' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600' }}>{dancer.name}</div>
+                        <div style={{ fontSize: '0.85rem', color: '#6c757d' }}>
+                          Previous: {dancer.level} • Score: {dancer.averageScore?.toFixed(1) || 'N/A'} • From: {dancer.auditionName || 'Previous Season'}
+                        </div>
+                      </div>
+                      {selectedPreviousDancers.has(dancer.id) && (
+                        <select
+                          value={previousDancerLevels[dancer.id] || dancer.level || 'Level 4'}
+                          onChange={(e) => setPreviousDancerLevels(prev => ({
+                            ...prev,
+                            [dancer.id]: e.target.value
+                          }))}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            marginLeft: '1rem',
+                            border: '1px solid #ced4da',
+                            borderRadius: '0.25rem'
+                          }}
+                        >
+                          <option value="Level 1">Level 1</option>
+                          <option value="Level 2">Level 2</option>
+                          <option value="Level 3">Level 3</option>
+                          <option value="Level 4">Level 4</option>
+                        </select>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                
+                {selectedPreviousDancers.size > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                    <button
+                      onClick={() => {
+                        setSelectedPreviousDancers(new Set());
+                        setPreviousDancerLevels({});
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#6c757d',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Clear Selection
+                    </button>
+                    <button
+                      onClick={handleAddPreviousSeasonDancers}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        cursor: 'pointer',
+                        fontWeight: '600'
+                      }}
+                    >
+                      Add {selectedPreviousDancers.size} Dancer{selectedPreviousDancers.size !== 1 ? 's' : ''}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {showPreviousSeason && previousSeasonDancers.length === 0 && (
+              <p style={{ color: '#856404', fontStyle: 'italic' }}>
+                No previous season dancers found. All dancers from past auditions will appear here.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Instructions */}
