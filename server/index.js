@@ -5270,11 +5270,11 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
           });
         }
         
-        return { scoreRef, isNewScore, finalAuditionId };
+        return { scoreRef, isNewScore };
       });
     });
     
-    const { scoreRef, isNewScore, finalAuditionId } = result;
+    const { scoreRef, isNewScore } = result;
     
     // Verify the score was actually saved by reading it back
     const savedDoc = await scoreRef.get();
