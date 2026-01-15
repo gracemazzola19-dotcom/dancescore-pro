@@ -1406,10 +1406,7 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
     
     // Get processed dancers with scores directly (same logic as /api/auditions/:id/dancers)
     // Filter by clubId for security
-    const dancersSnapshot = await db.collection('dancers')
-      .where('clubId', '==', clubId)
-      .where('auditionId', '==', id)
-      .get();
+    // Reuse dancersSnapshot from validation above
     
     const dancers = [];
     for (const doc of dancersSnapshot.docs) {
@@ -5186,41 +5183,49 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
       }
     }
     
-    // Use transaction for atomic score submission
+    // Check for existing scores BEFORE transaction (queries can't be done inside transactions)
+    const existingScoresSnapshot = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .where('dancerId', '==', dancerId)
+      .where('judgeId', '==', req.user.id)
+      .get();
+    
+    // Check if there's a SUBMITTED score (not just a draft)
+    const hasSubmittedScore = !existingScoresSnapshot.empty && 
+                               existingScoresSnapshot.docs.some(doc => doc.data().submitted === true);
+    
+    if (hasSubmittedScore) {
+      return res.status(400).json({ 
+        error: 'You have already submitted scores for this dancer. Use unsubmit to make changes.' 
+      });
+    }
+    
+    // Get dancer data before transaction
+    const dancerDoc = await db.collection('dancers').doc(dancerId).get();
+    if (!dancerDoc.exists) {
+      return res.status(404).json({ error: 'Dancer not found' });
+    }
+    
+    const dancerData = dancerDoc.data();
+    if (dancerData.clubId && dancerData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Dancer belongs to a different club' });
+    }
+    
+    // Ensure auditionId is set - prioritize from request, then from dancer
+    const finalAuditionId = auditionId || dancerData.auditionId || null;
+    if (!finalAuditionId) {
+      console.warn(`⚠️ WARNING: Score submission for dancer ${dancerId} has no auditionId!`);
+    }
+    
+    // Use transaction for atomic score submission (only for writes)
     const result = await retryOperation(async () => {
       return await db.runTransaction(async (transaction) => {
-        // Read dancer document
+        // Re-read dancer document in transaction for consistency
         const dancerRef = db.collection('dancers').doc(dancerId);
-        const dancerDoc = await transaction.get(dancerRef);
+        const dancerDocInTx = await transaction.get(dancerRef);
         
-        if (!dancerDoc.exists) {
+        if (!dancerDocInTx.exists) {
           throw new Error('Dancer not found');
-        }
-        
-        const dancerData = dancerDoc.data();
-        if (dancerData.clubId && dancerData.clubId !== clubId) {
-          throw new Error('Access denied: Dancer belongs to a different club');
-        }
-        
-        // Check if this judge has already submitted scores for this dancer
-        const existingScoresSnapshot = await db.collection('scores')
-          .where('clubId', '==', clubId)
-          .where('dancerId', '==', dancerId)
-          .where('judgeId', '==', req.user.id)
-          .get();
-        
-        // Check if there's a SUBMITTED score (not just a draft)
-        const hasSubmittedScore = !existingScoresSnapshot.empty && 
-                                   existingScoresSnapshot.docs.some(doc => doc.data().submitted === true);
-        
-        if (hasSubmittedScore) {
-          throw new Error('You have already submitted scores for this dancer. Use unsubmit to make changes.');
-        }
-        
-        // Ensure auditionId is set - prioritize from request, then from dancer
-        const finalAuditionId = auditionId || dancerData.auditionId || null;
-        if (!finalAuditionId) {
-          console.warn(`⚠️ WARNING: Score submission for dancer ${dancerId} has no auditionId!`);
         }
         
         const scoreData = {
