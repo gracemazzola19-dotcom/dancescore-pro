@@ -361,6 +361,8 @@ const Deliberations: React.FC = () => {
       
       // Refresh dancers list
       const refreshedDancers = await fetchDancers();
+      console.log('Refreshed dancers after adding:', refreshedDancers.length);
+      console.log('Added dancers from response:', response.data.added);
       
       // Update level assignments to include new dancers
       const newAssignments: { [dancerId: string]: string } = {};
@@ -369,6 +371,9 @@ const Deliberations: React.FC = () => {
         const newDancer = refreshedDancers.find((d: Dancer) => d.name === added.name);
         if (newDancer) {
           newAssignments[newDancer.id] = added.level;
+          console.log(`Found and assigned level to: ${newDancer.name} (${newDancer.id}) -> ${added.level}`);
+        } else {
+          console.warn(`Could not find dancer in refreshed list: ${added.name}`);
         }
       });
 
