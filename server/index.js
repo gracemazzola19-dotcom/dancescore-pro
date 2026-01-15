@@ -135,7 +135,116 @@ const getClubId = (req) => {
   return req.user?.clubId || 'msu-dance-club'; // Fallback for safety
 };
 
-// Routes
+// ============================================================================
+// SAFEGUARD HELPER FUNCTIONS
+// ============================================================================
+
+// Audit logging helper
+async function logAuditEvent(eventType, details, userId, clubId, req = null) {
+  try {
+    const auditData = {
+      eventType, // 'score_submitted', 'deliberations_submitted', 'audition_deleted', etc.
+      details,
+      userId: userId || 'system',
+      clubId: clubId || 'unknown',
+      timestamp: new Date(),
+      ipAddress: req?.ip || 'unknown',
+      userAgent: req?.get('user-agent') || 'unknown'
+    };
+    
+    await db.collection('audit_logs').add(auditData);
+    console.log(`📝 Audit log: ${eventType} by ${userId} in ${clubId}`);
+  } catch (error) {
+    // Don't fail the main operation if audit logging fails
+    console.error('⚠️ Failed to log audit event:', error);
+  }
+}
+
+// Enhanced error logging helper
+function logErrorWithContext(error, req, context = {}) {
+  const errorContext = {
+    timestamp: new Date().toISOString(),
+    endpoint: req?.path || 'unknown',
+    method: req?.method || 'unknown',
+    userId: req?.user?.id || 'unknown',
+    clubId: getClubId(req) || 'unknown',
+    params: req?.params || {},
+    body: req?.body || {},
+    query: req?.query || {},
+    ...context,
+    error: {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code
+    }
+  };
+  
+  console.error('❌ Error with full context:', JSON.stringify(errorContext, null, 2));
+  
+  // Optionally: Send to error tracking service (Sentry, etc.)
+  // if (process.env.SENTRY_DSN) { ... }
+  
+  return errorContext;
+}
+
+// Retry logic with exponential backoff
+async function retryOperation(operation, maxRetries = 3, delay = 1000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Check if error is retryable (Firestore errors)
+      const retryableErrors = [14, 'UNAVAILABLE', 'DEADLINE_EXCEEDED', 'ABORTED', 'RESOURCE_EXHAUSTED'];
+      const isRetryable = retryableErrors.includes(error.code) || 
+                         error.message?.includes('deadline') ||
+                         error.message?.includes('unavailable');
+      
+      if (isRetryable) {
+        const waitTime = delay * Math.pow(2, attempt - 1); // Exponential backoff
+        console.log(`⚠️ Retry attempt ${attempt}/${maxRetries} after ${waitTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+        throw error; // Non-retryable error
+      }
+    }
+  }
+}
+
+// Validate score ranges
+function validateScore(score, fieldName) {
+  if (typeof score !== 'number' || isNaN(score)) {
+    throw new Error(`${fieldName} must be a number`);
+  }
+  if (score < 0 || score > 10) {
+    throw new Error(`${fieldName} must be between 0 and 10`);
+  }
+  return true;
+}
+
+// Validate scores object
+function validateScoresObject(scores) {
+  if (!scores || typeof scores !== 'object') {
+    throw new Error('scores must be an object');
+  }
+  
+  const scoreFields = ['kick', 'jump', 'turn', 'performance', 'execution', 'technique'];
+  for (const field of scoreFields) {
+    if (scores[field] !== undefined) {
+      validateScore(scores[field], field);
+    }
+  }
+  
+  return true;
+}
+
+// ============================================================================
+// ROUTES
+// ============================================================================
 
 // Settings management
 app.get('/api/settings', authenticateToken, async (req, res) => {
@@ -919,6 +1028,309 @@ app.post('/api/auditions/:id/save-deliberations', authenticateToken, async (req,
   }
 });
 
+// ============================================================================
+// SAFEGUARD ENDPOINTS
+// ============================================================================
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+  
+  // Check Firestore connection
+  try {
+    await db.collection('_health').limit(1).get();
+    health.checks.firestore = 'connected';
+  } catch (error) {
+    health.status = 'unhealthy';
+    health.checks.firestore = `error: ${error.message}`;
+  }
+  
+  // Check Firebase Admin
+  try {
+    admin.app();
+    health.checks.firebaseAdmin = 'initialized';
+  } catch (error) {
+    health.status = 'unhealthy';
+    health.checks.firebaseAdmin = `error: ${error.message}`;
+  }
+  
+  res.status(health.status === 'healthy' ? 200 : 503).json(health);
+});
+
+// Pre-submission validation endpoint
+app.get('/api/auditions/:id/validate-submission', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    const validation = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      stats: {}
+    };
+    
+    // Verify audition exists and belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Audition not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
+    }
+    
+    // Check dancers
+    const dancersSnapshot = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    
+    validation.stats.totalDancers = dancersSnapshot.size;
+    validation.stats.dancersWithScores = 0;
+    validation.stats.dancersWithoutScores = 0;
+    validation.stats.totalSubmittedScores = 0;
+    validation.stats.scoresWithMissingAuditionId = 0;
+    
+    for (const doc of dancersSnapshot.docs) {
+      const dancer = doc.data();
+      const dancerId = doc.id;
+      
+      // Check required fields
+      if (!dancer.name || !dancer.auditionNumber) {
+        validation.isValid = false;
+        validation.errors.push(`Dancer ${dancerId} missing name or auditionNumber`);
+        continue;
+      }
+      
+      // Check scores
+      const scoresSnapshot = await db.collection('scores')
+        .where('clubId', '==', clubId)
+        .where('dancerId', '==', dancerId)
+        .where('auditionId', '==', id)
+        .where('submitted', '==', true)
+        .get();
+      
+      if (scoresSnapshot.empty) {
+        validation.isValid = false;
+        validation.errors.push(`Dancer ${dancer.name} (#${dancer.auditionNumber}) has no submitted scores`);
+        validation.stats.dancersWithoutScores++;
+      } else {
+        validation.stats.dancersWithScores++;
+        validation.stats.totalSubmittedScores += scoresSnapshot.size;
+        
+        // Check for missing auditionId
+        const scoresWithMissingAuditionId = scoresSnapshot.docs.filter(
+          scoreDoc => !scoreDoc.data().auditionId
+        );
+        if (scoresWithMissingAuditionId.length > 0) {
+          validation.warnings.push(`Dancer ${dancer.name} has ${scoresWithMissingAuditionId.length} scores missing auditionId`);
+          validation.stats.scoresWithMissingAuditionId += scoresWithMissingAuditionId.length;
+        }
+      }
+    }
+    
+    // Check if deliberations have already been submitted
+    const existingSubmission = await db.collection('deliberations')
+      .where('auditionId', '==', id)
+      .where('submitted', '==', true)
+      .get();
+    
+    if (!existingSubmission.empty) {
+      validation.warnings.push('Deliberations have already been submitted for this audition');
+    }
+    
+    res.json(validation);
+  } catch (error) {
+    logErrorWithContext(error, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Data consistency check endpoint
+app.get('/api/admin/check-data-consistency', authenticateToken, async (req, res) => {
+  try {
+    // Only admins can access this
+    if (req.user.role !== 'admin' && req.user.role !== 'eboard') {
+      return res.status(403).json({ error: 'Access denied: Admin role required' });
+    }
+    
+    const clubId = getClubId(req);
+    const issues = [];
+    
+    // Check for scores without auditionId
+    const scoresWithoutAuditionId = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .get();
+    
+    let scoresMissingAuditionIdCount = 0;
+    for (const doc of scoresWithoutAuditionId.docs) {
+      if (!doc.data().auditionId) {
+        scoresMissingAuditionIdCount++;
+      }
+    }
+    
+    if (scoresMissingAuditionIdCount > 0) {
+      issues.push({
+        type: 'scores_missing_auditionId',
+        count: scoresMissingAuditionIdCount,
+        severity: 'high'
+      });
+    }
+    
+    // Check for dancers without auditionId
+    const dancersWithoutAuditionId = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .get();
+    
+    let dancersMissingAuditionIdCount = 0;
+    for (const doc of dancersWithoutAuditionId.docs) {
+      if (!doc.data().auditionId) {
+        dancersMissingAuditionIdCount++;
+      }
+    }
+    
+    if (dancersMissingAuditionIdCount > 0) {
+      issues.push({
+        type: 'dancers_missing_auditionId',
+        count: dancersMissingAuditionIdCount,
+        severity: 'medium'
+      });
+    }
+    
+    // Check for orphaned scores (score references dancer that doesn't exist)
+    const allScores = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .get();
+    
+    for (const scoreDoc of allScores.docs) {
+      const scoreData = scoreDoc.data();
+      if (scoreData.dancerId) {
+        const dancerDoc = await db.collection('dancers').doc(scoreData.dancerId).get();
+        if (!dancerDoc.exists) {
+          issues.push({
+            type: 'orphaned_score',
+            scoreId: scoreDoc.id,
+            dancerId: scoreData.dancerId,
+            severity: 'high'
+          });
+        }
+      }
+    }
+    
+    res.json({ 
+      issues, 
+      timestamp: new Date().toISOString(),
+      clubId 
+    });
+  } catch (error) {
+    logErrorWithContext(error, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Audition health monitoring endpoint
+app.get('/api/admin/audition-health/:id', authenticateToken, async (req, res) => {
+  try {
+    // Only admins can access this
+    if (req.user.role !== 'admin' && req.user.role !== 'eboard') {
+      return res.status(403).json({ error: 'Access denied: Admin role required' });
+    }
+    
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    const health = {
+      auditionId: id,
+      timestamp: new Date().toISOString(),
+      issues: [],
+      stats: {}
+    };
+    
+    // Verify audition exists
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Audition not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    health.stats.auditionStatus = auditionData.status || 'unknown';
+    health.stats.auditionName = auditionData.name || 'Unknown';
+    
+    // Count dancers
+    const dancersCount = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    health.stats.dancers = dancersCount.size;
+    
+    // Count scores
+    const scoresCount = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .where('submitted', '==', true)
+      .get();
+    health.stats.submittedScores = scoresCount.size;
+    
+    // Count draft scores
+    const draftScoresCount = await db.collection('scores')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .where('submitted', '==', false)
+      .get();
+    health.stats.draftScores = draftScoresCount.size;
+    
+    // Check for dancers without scores
+    for (const dancerDoc of dancersCount.docs) {
+      const scoresForDancer = await db.collection('scores')
+        .where('clubId', '==', clubId)
+        .where('dancerId', '==', dancerDoc.id)
+        .where('auditionId', '==', id)
+        .where('submitted', '==', true)
+        .get();
+      
+      if (scoresForDancer.empty) {
+        health.issues.push({
+          type: 'dancer_without_scores',
+          dancerId: dancerDoc.id,
+          dancerName: dancerDoc.data().name,
+          auditionNumber: dancerDoc.data().auditionNumber
+        });
+      }
+    }
+    
+    // Check for scores with missing required fields
+    for (const scoreDoc of scoresCount.docs) {
+      const scoreData = scoreDoc.data();
+      if (!scoreData.dancerId || !scoreData.judgeId) {
+        health.issues.push({
+          type: 'score_missing_required_fields',
+          scoreId: scoreDoc.id,
+          missingFields: []
+        });
+        if (!scoreData.dancerId) health.issues[health.issues.length - 1].missingFields.push('dancerId');
+        if (!scoreData.judgeId) health.issues[health.issues.length - 1].missingFields.push('judgeId');
+      }
+    }
+    
+    health.status = health.issues.length === 0 ? 'healthy' : 'needs_attention';
+    
+    res.json(health);
+  } catch (error) {
+    logErrorWithContext(error, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// AUDITION ROUTES
+// ============================================================================
+
 // Submit deliberations and move to club database
 app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (req, res) => {
   try {
@@ -938,6 +1350,58 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
     const auditionData = auditionDoc.data();
     if (auditionData.clubId && auditionData.clubId !== clubId) {
       return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
+    }
+    
+    // Check if deliberations have already been submitted (idempotency check)
+    const existingSubmission = await db.collection('deliberations')
+      .where('auditionId', '==', id)
+      .where('submitted', '==', true)
+      .get();
+    
+    if (!existingSubmission.empty) {
+      const submittedData = existingSubmission.docs[0].data();
+      return res.status(400).json({ 
+        error: 'Deliberations have already been submitted for this audition',
+        submittedAt: submittedData.submittedAt,
+        submittedBy: submittedData.updatedBy
+      });
+    }
+    
+    // Pre-submission validation: Check that all required data exists
+    const dancersSnapshot = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    
+    const validationErrors = [];
+    for (const doc of dancersSnapshot.docs) {
+      const dancerData = doc.data();
+      const dancerId = doc.id;
+      
+      // Check required fields
+      if (!dancerData.name || !dancerData.auditionNumber) {
+        validationErrors.push(`Dancer ${dancerId} missing name or auditionNumber`);
+        continue;
+      }
+      
+      // Check that dancer has at least one submitted score
+      const scoresSnapshot = await db.collection('scores')
+        .where('clubId', '==', clubId)
+        .where('dancerId', '==', dancerId)
+        .where('auditionId', '==', id)
+        .where('submitted', '==', true)
+        .get();
+      
+      if (scoresSnapshot.empty) {
+        validationErrors.push(`Dancer ${dancerData.name} (#${dancerData.auditionNumber}) has no submitted scores`);
+      }
+    }
+    
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ 
+        error: 'Validation failed: Cannot submit deliberations with missing data',
+        errors: validationErrors
+      });
     }
     
     // Get processed dancers with scores directly (same logic as /api/auditions/:id/dancers)
@@ -1106,14 +1570,36 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
       deliberationsCompletedBy: req.user.id || 'admin'
     });
     
-    console.log(`✅ Transferred ${transferredCount} dancers to club database with level assignments`);
+    console.log(`\n🎉 DELIBERATIONS SUBMISSION COMPLETE!`);
+    console.log(`✅ Transferred ${transferredCount} dancers to club_members collection`);
+    console.log(`✅ Audition ${id} status updated to 'completed'`);
+    console.log(`✅ All dancers have level assignments and scores\n`);
+    
+    // Log audit event
+    await logAuditEvent('deliberations_submitted', {
+      auditionId: id,
+      auditionName: auditionData.name,
+      dancersTransferred: transferredCount,
+      levelAssignments: Object.keys(levelAssignments || {}).length
+    }, req.user.id, clubId, req);
+    
     res.json({ 
+      success: true,
       message: `Successfully transferred ${transferredCount} dancers to club database with level assignments`,
-      count: transferredCount 
+      count: transferredCount,
+      auditionId: id
     });
   } catch (error) {
-    console.error('❌ Error submitting deliberations:', error);
-    res.status(500).json({ error: error.message });
+    const errorContext = logErrorWithContext(error, req, { 
+      operation: 'submit_deliberations',
+      auditionId: id 
+    });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Deliberations submission failed. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
   }
 });
 
@@ -4676,112 +5162,167 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
     if (!dancerId) {
       return res.status(400).json({ error: 'dancerId is required' });
     }
-    if (!scores || typeof scores !== 'object') {
-      return res.status(400).json({ error: 'scores object is required' });
+    
+    // Validate scores object and ranges
+    try {
+      validateScoresObject(scores);
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
     }
     
     console.log(`Judge ${req.user.id} submitting scores for dancer ${dancerId}:`, scores);
     
-    // Verify dancer belongs to user's club (security check)
-    const dancerDoc = await db.collection('dancers').doc(dancerId).get();
-    if (!dancerDoc.exists) {
-      return res.status(404).json({ error: 'Dancer not found' });
+    // Check audition status before allowing score submission
+    const scoreAuditionId = auditionId || null;
+    if (scoreAuditionId) {
+      const auditionDoc = await db.collection('auditions').doc(scoreAuditionId).get();
+      if (auditionDoc.exists) {
+        const auditionData = auditionDoc.data();
+        if (auditionData.status !== 'active') {
+          return res.status(400).json({ 
+            error: `Cannot submit scores: Audition is ${auditionData.status}, not active` 
+          });
+        }
+      }
     }
     
-    const dancerData = dancerDoc.data();
-    if (dancerData.clubId && dancerData.clubId !== clubId) {
-      return res.status(403).json({ error: 'Access denied: Dancer belongs to a different club' });
-    }
-    
-    // Check if this judge has already submitted scores for this dancer (filtered by clubId)
-    const existingScoresSnapshot = await db.collection('scores')
-      .where('clubId', '==', clubId) // Filter by clubId for security
-      .where('dancerId', '==', dancerId)
-      .where('judgeId', '==', req.user.id)
-      .get();
-    
-    // Check if there's a SUBMITTED score (not just a draft)
-    const hasSubmittedScore = !existingScoresSnapshot.empty && 
-                               existingScoresSnapshot.docs.some(doc => doc.data().submitted === true);
-    
-    if (hasSubmittedScore) {
-      return res.status(400).json({ 
-        error: 'You have already submitted scores for this dancer. Use unsubmit to make changes.' 
+    // Use transaction for atomic score submission
+    const result = await retryOperation(async () => {
+      return await db.runTransaction(async (transaction) => {
+        // Read dancer document
+        const dancerRef = db.collection('dancers').doc(dancerId);
+        const dancerDoc = await transaction.get(dancerRef);
+        
+        if (!dancerDoc.exists) {
+          throw new Error('Dancer not found');
+        }
+        
+        const dancerData = dancerDoc.data();
+        if (dancerData.clubId && dancerData.clubId !== clubId) {
+          throw new Error('Access denied: Dancer belongs to a different club');
+        }
+        
+        // Check if this judge has already submitted scores for this dancer
+        const existingScoresSnapshot = await db.collection('scores')
+          .where('clubId', '==', clubId)
+          .where('dancerId', '==', dancerId)
+          .where('judgeId', '==', req.user.id)
+          .get();
+        
+        // Check if there's a SUBMITTED score (not just a draft)
+        const hasSubmittedScore = !existingScoresSnapshot.empty && 
+                                   existingScoresSnapshot.docs.some(doc => doc.data().submitted === true);
+        
+        if (hasSubmittedScore) {
+          throw new Error('You have already submitted scores for this dancer. Use unsubmit to make changes.');
+        }
+        
+        // Ensure auditionId is set - prioritize from request, then from dancer
+        const finalAuditionId = auditionId || dancerData.auditionId || null;
+        if (!finalAuditionId) {
+          console.warn(`⚠️ WARNING: Score submission for dancer ${dancerId} has no auditionId!`);
+        }
+        
+        const scoreData = {
+          dancerId,
+          auditionId: finalAuditionId,
+          clubId: clubId,
+          judgeId: req.user.id,
+          judgeName: req.user.name || req.user.email || req.user.id,
+          scores: {
+            kick: scores.kick || 0,
+            jump: scores.jump || 0,
+            turn: scores.turn || 0,
+            performance: scores.performance || 0,
+            execution: scores.execution || 0,
+            technique: scores.technique || 0
+          },
+          comments: comments || '',
+          submitted: true,
+          submittedAt: new Date(),
+          timestamp: new Date()
+        };
+        
+        let scoreRef;
+        let isNewScore = false;
+        
+        if (!existingScoresSnapshot.empty) {
+          // Update existing draft score
+          const existingDoc = existingScoresSnapshot.docs[0];
+          scoreRef = existingDoc.ref;
+          transaction.update(scoreRef, scoreData);
+          console.log(`Score updated with ID: ${existingDoc.id}`);
+        } else {
+          // Create new score
+          scoreRef = db.collection('scores').doc();
+          transaction.set(scoreRef, scoreData);
+          isNewScore = true;
+          console.log(`Score created with ID: ${scoreRef.id}`);
+          
+          // Update dancer's scores array atomically
+          transaction.update(dancerRef, {
+            scores: admin.firestore.FieldValue.arrayUnion(scoreRef.id)
+          });
+        }
+        
+        return { scoreRef, isNewScore, finalAuditionId };
       });
-    }
+    });
     
-    // If there's an existing draft (submitted: false), update it
-    // Otherwise create new score
-    let docRef;
-    // Ensure auditionId is set - prioritize from request, then from dancer, then log warning
-    const scoreAuditionId = auditionId || dancerData.auditionId || null;
-    if (!scoreAuditionId) {
-      console.warn(`⚠️ WARNING: Score submission for dancer ${dancerId} has no auditionId! Request had: ${auditionId}, Dancer has: ${dancerData.auditionId}`);
-    }
+    const { scoreRef, isNewScore, finalAuditionId } = result;
     
-    const scoreData = {
-      dancerId,
-      auditionId: scoreAuditionId,
-      clubId: clubId, // Multi-tenant: associate with user's club
-      judgeId: req.user.id,
-      judgeName: req.user.name || req.user.email || req.user.id,
-      scores: {
-        kick: scores.kick || 0,
-        jump: scores.jump || 0,
-        turn: scores.turn || 0,
-        performance: scores.performance || 0,
-        execution: scores.execution || 0,
-        technique: scores.technique || 0
-      },
-      comments: comments || '',
-      submitted: true,
-      timestamp: new Date()
-    };
-    
-    if (!existingScoresSnapshot.empty) {
-      // Update existing draft score
-      const existingDoc = existingScoresSnapshot.docs[0];
-      await existingDoc.ref.update(scoreData);
-      docRef = existingDoc.ref;
-      console.log(`Score updated with ID: ${existingDoc.id}`);
-    } else {
-      // Create new score
-      docRef = await db.collection('scores').add(scoreData);
-      console.log(`Score saved with ID: ${docRef.id}`);
-      
-      // Update dancer's scores array only for new scores
-      await db.collection('dancers').doc(dancerId).update({
-        scores: admin.firestore.FieldValue.arrayUnion(docRef.id)
-      });
-    }
-
     // Verify the score was actually saved by reading it back
-    const savedDoc = await docRef.get();
+    const savedDoc = await scoreRef.get();
     if (!savedDoc.exists) {
-      console.error(`❌ CRITICAL: Score document ${docRef.id} was not created!`);
-      return res.status(500).json({ error: 'Score submission failed: Document was not created' });
+      const error = new Error('Score submission failed: Document was not created');
+      logErrorWithContext(error, req, { dancerId, scoreRef: scoreRef.id });
+      return res.status(500).json({ error: error.message });
     }
     
     const savedData = savedDoc.data();
-    console.log(`✅ Score verified saved: ID ${docRef.id}, submitted: ${savedData.submitted}, dancerId: ${savedData.dancerId}, judgeId: ${savedData.judgeId}, auditionId: ${savedData.auditionId || 'MISSING'}`);
+    
+    // Verify all required fields are present
+    const requiredFields = ['dancerId', 'judgeId', 'submitted'];
+    for (const field of requiredFields) {
+      if (!savedData[field]) {
+        const error = new Error(`Required field ${field} is missing in saved document`);
+        logErrorWithContext(error, req, { dancerId, scoreRef: scoreRef.id, savedData });
+        return res.status(500).json({ error: error.message });
+      }
+    }
+    
+    console.log(`✅ Score verified saved: ID ${scoreRef.id}, submitted: ${savedData.submitted}, dancerId: ${savedData.dancerId}, judgeId: ${savedData.judgeId}, auditionId: ${savedData.auditionId || 'MISSING'}`);
+    
+    // Log audit event
+    await logAuditEvent('score_submitted', {
+      dancerId,
+      auditionId: finalAuditionId,
+      judgeId: req.user.id,
+      scoreId: scoreRef.id,
+      isNewScore
+    }, req.user.id, clubId, req);
     
     // Clear cache for this audition's dancers when scores are submitted
-    const finalAuditionId = auditionId || dancerData.auditionId;
     if (finalAuditionId) {
       const cacheKey = `dancers_${clubId}_${finalAuditionId}`;
       cache.del(cacheKey);
     }
     // Also clear generic cache
-    const genericCacheKey = `dancers_${clubId}_*`;
     cache.keys().forEach(key => {
       if (key.startsWith(`dancers_${clubId}_`)) {
         cache.del(key);
       }
     });
     
-    res.json({ id: docRef.id, ...scoreData, verified: true });
+    res.json({ id: scoreRef.id, ...savedData, verified: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorContext = logErrorWithContext(error, req, { operation: 'score_submission' });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Score submission failed. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
   }
 });
 
