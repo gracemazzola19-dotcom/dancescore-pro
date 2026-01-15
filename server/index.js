@@ -4793,8 +4793,37 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
       });
     }
     
+    // Add previous season dancers from club_members
+    for (const memberDoc of previousSeasonMembersSnapshot.docs) {
+      const memberData = memberDoc.data();
+      
+      // Convert club_member to dancer format for deliberations
+      const previousDancer = {
+        id: memberDoc.id,
+        name: memberData.name || '',
+        auditionNumber: parseInt(memberData.auditionNumber) || 9999,
+        email: memberData.email || '',
+        phone: memberData.phone || '',
+        shirtSize: memberData.shirtSize || '',
+        group: memberData.dancerGroup || 'Unassigned',
+        previousMember: memberData.previousMember || 'yes',
+        previousLevel: memberData.previousLevel || memberData.level || '',
+        averageScore: memberData.averageScore || memberData.overallScore || 0,
+        scores: memberData.scores || {},
+        fromPreviousSeason: true,
+        rank: 0 // Will be calculated below
+      };
+      
+      dancers.push(previousDancer);
+      console.log(`   ✅ Added previous season dancer: ${memberData.name} (from club_members)`);
+    }
+    
     // Sort by audition number
-    dancers.sort((a, b) => a.auditionNumber - b.auditionNumber);
+    dancers.sort((a, b) => {
+      const aNum = typeof a.auditionNumber === 'number' ? a.auditionNumber : parseInt(a.auditionNumber) || 9999;
+      const bNum = typeof b.auditionNumber === 'number' ? b.auditionNumber : parseInt(b.auditionNumber) || 9999;
+      return aNum - bNum;
+    });
     
     // Add rank based on average score
     const sortedByScore = [...dancers].sort((a, b) => b.averageScore - a.averageScore);
