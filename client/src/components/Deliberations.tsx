@@ -66,13 +66,6 @@ const Deliberations: React.FC = () => {
   const [loadingPreviousSeason, setLoadingPreviousSeason] = useState(false);
   const [selectedPreviousDancers, setSelectedPreviousDancers] = useState<Set<string>>(new Set());
   const [previousDancerLevels, setPreviousDancerLevels] = useState<{ [memberId: string]: string }>({});
-  
-  // Previous season dancers state
-  const [showPreviousSeason, setShowPreviousSeason] = useState(false);
-  const [previousSeasonDancers, setPreviousSeasonDancers] = useState<any[]>([]);
-  const [loadingPreviousSeason, setLoadingPreviousSeason] = useState(false);
-  const [selectedPreviousDancers, setSelectedPreviousDancers] = useState<Set<string>>(new Set());
-  const [previousDancerLevels, setPreviousDancerLevels] = useState<{ [memberId: string]: string }>({});
 
   const fetchAuditionDetails = async () => {
     try {
