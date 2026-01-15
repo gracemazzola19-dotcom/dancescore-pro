@@ -4619,6 +4619,19 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
     }
     
     const dancersSnapshot = await dancersQuery.get();
+    
+    // Also fetch previous season dancers from club_members for this audition
+    let previousSeasonMembersSnapshot;
+    if (auditionId) {
+      previousSeasonMembersSnapshot = await db.collection('club_members')
+        .where('clubId', '==', clubId)
+        .where('auditionId', '==', auditionId)
+        .where('fromPreviousSeason', '==', true)
+        .get();
+    } else {
+      previousSeasonMembersSnapshot = { docs: [] };
+    }
+    
     const dancers = [];
     
     for (const doc of dancersSnapshot.docs) {
