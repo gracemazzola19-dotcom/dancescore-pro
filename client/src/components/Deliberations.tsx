@@ -400,7 +400,7 @@ const Deliberations: React.FC = () => {
         setManualOrder(prev => {
           // Keep existing order, add new dancers at the end
           const existingIds = new Set(prev);
-          const newIds = newDancerIds.filter(id => !existingIds.has(id));
+          const newIds = newDancerIds.filter((id: string) => !existingIds.has(id));
           return [...prev, ...newIds];
         });
       }
