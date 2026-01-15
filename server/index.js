@@ -932,15 +932,40 @@ app.put('/api/auditions/:id/status', authenticateToken, async (req, res) => {
       }
     }
     
+    const previousStatus = auditionData.status || 'unknown';
+    
     await db.collection('auditions').doc(id).update({
       status,
       updatedAt: new Date(),
-      updatedBy: req.user.id
+      updatedBy: req.user.id,
+      statusHistory: admin.firestore.FieldValue.arrayUnion({
+        status,
+        previousStatus,
+        changedAt: new Date(),
+        changedBy: req.user.id
+      })
     });
+    
+    // Log audit event
+    await logAuditEvent('audition_status_changed', {
+      auditionId: id,
+      auditionName: auditionData.name || 'Unknown',
+      previousStatus: previousStatus,
+      newStatus: status
+    }, req.user.id, clubId, req);
     
     res.json({ message: 'Audition status updated successfully' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const errorContext = logErrorWithContext(error, req, { 
+      operation: 'update_audition_status',
+      auditionId: id 
+    });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Failed to update audition status. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
   }
 });
 
@@ -1653,14 +1678,31 @@ app.delete('/api/auditions/:id', authenticateToken, async (req, res) => {
     
     console.log(`✅ Audition ${id} deleted successfully by ${req.user.id}`);
     console.log(`   Deleted ${dancersSnapshot.size} dancers and ${scoresSnapshot.size} scores`);
+    
+    // Log audit event
+    await logAuditEvent('audition_deleted', {
+      auditionId: id,
+      auditionName: auditionData.name || 'Unknown',
+      deletedDancers: dancersSnapshot.size,
+      deletedScores: scoresSnapshot.size
+    }, req.user.id, clubId, req);
+    
     res.json({ 
       message: 'Audition deleted successfully',
       deletedDancers: dancersSnapshot.size,
       deletedScores: scoresSnapshot.size
     });
   } catch (error) {
-    console.error('❌ Error deleting audition:', error);
-    res.status(500).json({ error: error.message });
+    const errorContext = logErrorWithContext(error, req, { 
+      operation: 'delete_audition',
+      auditionId: id 
+    });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Failed to delete audition. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
   }
 });
 
@@ -2200,10 +2242,26 @@ app.delete('/api/videos/:id', authenticateToken, async (req, res) => {
     await db.collection('audition_videos').doc(id).delete();
 
     console.log(`✅ Video ${id} deleted by ${req.user.id}`);
+    
+    // Log audit event
+    await logAuditEvent('video_deleted', {
+      videoId: id,
+      videoFilename: videoData.filename || 'Unknown',
+      auditionId: videoData.auditionId || null
+    }, req.user.id, clubId, req);
+    
     res.json({ message: 'Video deleted successfully' });
   } catch (error) {
-    console.error('Error deleting video:', error);
-    res.status(500).json({ error: error.message });
+    const errorContext = logErrorWithContext(error, req, { 
+      operation: 'delete_video',
+      videoId: id 
+    });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Failed to delete video. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
   }
 });
 
@@ -2234,10 +2292,26 @@ app.delete('/api/judges/:id', authenticateToken, async (req, res) => {
     await db.collection('judges').doc(id).delete();
     
     console.log(`✅ Judge ${id} deleted successfully by ${req.user.id} from club ${clubId}`);
+    
+    // Log audit event
+    await logAuditEvent('judge_deleted', {
+      judgeId: id,
+      judgeName: judgeData.name || judgeData.email || 'Unknown',
+      judgeRole: judgeData.role || 'Unknown'
+    }, req.user.id, clubId, req);
+    
     res.json({ message: 'Judge deleted successfully' });
   } catch (error) {
-    console.error('❌ Error deleting judge:', error);
-    res.status(500).json({ error: error.message });
+    const errorContext = logErrorWithContext(error, req, { 
+      operation: 'delete_judge',
+      judgeId: id 
+    });
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Failed to delete judge. Please try again.' 
+        : error.message,
+      errorId: errorContext.timestamp
+    });
   }
 });
 
