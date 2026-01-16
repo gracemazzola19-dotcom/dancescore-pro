@@ -1475,13 +1475,20 @@ app.post('/api/auditions/:id/add-previous-season-dancers', authenticateToken, as
         const assignedLevel = levelAssignments?.[memberId] || memberData.level || memberData.assignedLevel || 'Level 4';
         
         // Create new club member record for this audition
+        // Generate a new audition number if not provided (use timestamp-based number)
+        let newAuditionNumber = memberData.auditionNumber;
+        if (!newAuditionNumber || newAuditionNumber === '' || newAuditionNumber === '0') {
+          // Generate a unique audition number based on timestamp
+          newAuditionNumber = String(Date.now()).slice(-6)); // Last 6 digits of timestamp
+        }
+        
         const newMemberData = {
           id: String(memberId), // Keep reference to original member
           name: String(memberData.name || ''),
           email: String(memberData.email || ''),
           phone: String(memberData.phone || ''),
           shirtSize: String(memberData.shirtSize || ''),
-          auditionNumber: String(memberData.auditionNumber || ''),
+          auditionNumber: String(newAuditionNumber),
           dancerGroup: String(memberData.dancerGroup || ''),
           averageScore: Number(memberData.averageScore || memberData.overallScore || 0),
           rank: Number(memberData.rank || 0),

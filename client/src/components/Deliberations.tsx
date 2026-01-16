@@ -367,13 +367,20 @@ const Deliberations: React.FC = () => {
       // Update level assignments to include new dancers
       const newAssignments: { [dancerId: string]: string } = {};
       response.data.added.forEach((added: any) => {
-        // Find the newly added dancer in the refreshed list by matching name
-        const newDancer = refreshedDancers.find((d: Dancer) => d.name === added.name);
+        // Try to find by name first, then by ID if available
+        let newDancer = refreshedDancers.find((d: Dancer) => d.name === added.name);
+        
+        // If not found by name, try to find by ID (the response includes the new club_member ID)
+        if (!newDancer && added.id) {
+          newDancer = refreshedDancers.find((d: Dancer) => d.id === added.id);
+        }
+        
         if (newDancer) {
           newAssignments[newDancer.id] = added.level;
           console.log(`Found and assigned level to: ${newDancer.name} (${newDancer.id}) -> ${added.level}`);
         } else {
-          console.warn(`Could not find dancer in refreshed list: ${added.name}`);
+          console.warn(`Could not find dancer in refreshed list: ${added.name} (ID: ${added.id})`);
+          console.warn('Available dancers:', refreshedDancers.map((d: Dancer) => ({ id: d.id, name: d.name })));
         }
       });
 
