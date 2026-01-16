@@ -355,7 +355,12 @@ const Deliberations: React.FC = () => {
       console.log('Adding previous season dancers:', {
         auditionId: id,
         memberIds,
-        levelAssignments: levelAssignmentsForPrevious
+        memberIdsCount: memberIds.length,
+        levelAssignments: levelAssignmentsForPrevious,
+        selectedDancers: Array.from(selectedPreviousDancers).map(mid => {
+          const dancer = previousSeasonDancers.find(d => d.id === mid);
+          return { id: mid, name: dancer?.name || 'Unknown' };
+        })
       });
 
       const response = await api.post(`/api/auditions/${id}/add-previous-season-dancers`, {
