@@ -352,17 +352,38 @@ const Deliberations: React.FC = () => {
         levelAssignmentsForPrevious[memberId] = previousDancerLevels[memberId] || 'Level 4';
       });
 
+      console.log('Adding previous season dancers:', {
+        auditionId: id,
+        memberIds,
+        levelAssignments: levelAssignmentsForPrevious
+      });
+
       const response = await api.post(`/api/auditions/${id}/add-previous-season-dancers`, {
         memberIds,
         levelAssignments: levelAssignmentsForPrevious
       });
 
-      toast.success(`Successfully added ${response.data.added.length} previous season dancer(s)`);
+      console.log('API Response:', response.data);
+
+      if (!response.data || !response.data.added || response.data.added.length === 0) {
+        const errorMsg = response.data?.errors?.[0]?.error || 'No dancers were added. Check console for details.';
+        toast.error(errorMsg);
+        console.error('Failed to add dancers:', response.data);
+        return;
+      }
+
+      if (response.data.errors && response.data.errors.length > 0) {
+        console.warn('Some dancers failed to add:', response.data.errors);
+        toast.error(`Some dancers failed to add. ${response.data.added.length} succeeded, ${response.data.errors.length} failed.`);
+      } else {
+        toast.success(`Successfully added ${response.data.added.length} previous season dancer(s)`);
+      }
       
       // Refresh dancers list
       const refreshedDancers = await fetchDancers();
       console.log('Refreshed dancers after adding:', refreshedDancers.length);
       console.log('Added dancers from response:', response.data.added);
+      console.log('All refreshed dancers:', refreshedDancers.map((d: Dancer) => ({ id: d.id, name: d.name, fromPreviousSeason: (d as any).fromPreviousSeason })));
       
       // Update level assignments to include new dancers
       const newAssignments: { [dancerId: string]: string } = {};
