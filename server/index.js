@@ -4805,10 +4805,21 @@ app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
       const memberData = memberDoc.data();
       
       // Convert club_member to dancer format for deliberations
+      // Safely parse audition number
+      let auditionNum = 9999;
+      if (memberData.auditionNumber) {
+        const parsed = typeof memberData.auditionNumber === 'number' 
+          ? memberData.auditionNumber 
+          : parseInt(memberData.auditionNumber);
+        if (!isNaN(parsed) && parsed > 0) {
+          auditionNum = parsed;
+        }
+      }
+      
       const previousDancer = {
         id: memberDoc.id,
         name: memberData.name || '',
-        auditionNumber: parseInt(memberData.auditionNumber) || 9999,
+        auditionNumber: auditionNum,
         email: memberData.email || '',
         phone: memberData.phone || '',
         shirtSize: memberData.shirtSize || '',
