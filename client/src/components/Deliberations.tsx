@@ -387,23 +387,46 @@ const Deliberations: React.FC = () => {
       
       // Update level assignments to include new dancers
       const newAssignments: { [dancerId: string]: string } = {};
+      let foundCount = 0;
+      
       response.data.added.forEach((added: any) => {
-        // Try to find by name first, then by ID if available
-        let newDancer = refreshedDancers.find((d: Dancer) => d.name === added.name);
+        // Try to find by name first (case-insensitive), then by ID if available
+        let newDancer = refreshedDancers.find((d: Dancer) => 
+          d.name.toLowerCase().trim() === added.name.toLowerCase().trim()
+        );
         
         // If not found by name, try to find by ID (the response includes the new club_member ID)
         if (!newDancer && added.id) {
           newDancer = refreshedDancers.find((d: Dancer) => d.id === added.id);
         }
         
+        // Also try to find by fromPreviousSeason flag
+        if (!newDancer) {
+          newDancer = refreshedDancers.find((d: Dancer) => 
+            (d as any).fromPreviousSeason === true && 
+            d.name.toLowerCase().trim() === added.name.toLowerCase().trim()
+          );
+        }
+        
         if (newDancer) {
           newAssignments[newDancer.id] = added.level;
-          console.log(`Found and assigned level to: ${newDancer.name} (${newDancer.id}) -> ${added.level}`);
+          foundCount++;
+          console.log(`✅ Found and assigned level to: ${newDancer.name} (${newDancer.id}) -> ${added.level}`);
         } else {
-          console.warn(`Could not find dancer in refreshed list: ${added.name} (ID: ${added.id})`);
-          console.warn('Available dancers:', refreshedDancers.map((d: Dancer) => ({ id: d.id, name: d.name })));
+          console.warn(`⚠️ Could not find dancer in refreshed list: ${added.name} (ID: ${added.id})`);
+          console.warn('Available dancers:', refreshedDancers.map((d: Dancer) => ({ 
+            id: d.id, 
+            name: d.name, 
+            fromPreviousSeason: (d as any).fromPreviousSeason 
+          })));
         }
       });
+
+      if (foundCount === 0 && response.data.added.length > 0) {
+        console.error('❌ None of the added dancers were found in the refreshed list!');
+        console.error('This might be a timing issue - the dancers may not have been saved yet.');
+        toast.error('Dancers were added but not found in list. Please refresh the page.');
+      }
 
       // Update level assignments and counts
       if (Object.keys(newAssignments).length > 0) {
