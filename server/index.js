@@ -1479,7 +1479,7 @@ app.post('/api/auditions/:id/add-previous-season-dancers', authenticateToken, as
         let newAuditionNumber = memberData.auditionNumber;
         if (!newAuditionNumber || newAuditionNumber === '' || newAuditionNumber === '0') {
           // Generate a unique audition number based on timestamp
-          newAuditionNumber = String(Date.now()).slice(-6)); // Last 6 digits of timestamp
+          newAuditionNumber = String(Date.now()).slice(-6); // Last 6 digits of timestamp
         }
         
         const newMemberData = {
