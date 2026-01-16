@@ -1442,20 +1442,29 @@ app.post('/api/auditions/:id/add-previous-season-dancers', authenticateToken, as
     const addedMembers = [];
     const errors = [];
     
+    console.log(`\n🔄 Starting to add ${memberIds.length} previous season dancer(s) to audition ${id}`);
+    
     for (const memberId of memberIds) {
       try {
+        console.log(`\n   Processing memberId: ${memberId}`);
+        
         // Get the previous season member
         const memberDoc = await db.collection('club_members').doc(memberId).get();
         if (!memberDoc.exists) {
-          errors.push({ memberId, error: 'Member not found' });
+          const errorMsg = `Member not found with ID: ${memberId}`;
+          console.error(`   ❌ ${errorMsg}`);
+          errors.push({ memberId, error: errorMsg });
           continue;
         }
         
         const memberData = memberDoc.data();
+        console.log(`   📋 Found member: ${memberData.name} (from audition: ${memberData.auditionId || 'unknown'})`);
         
         // Verify member belongs to same club
         if (memberData.clubId && memberData.clubId !== clubId) {
-          errors.push({ memberId, error: 'Member belongs to different club' });
+          const errorMsg = `Member belongs to different club (${memberData.clubId} vs ${clubId})`;
+          console.error(`   ❌ ${errorMsg}`);
+          errors.push({ memberId, error: errorMsg });
           continue;
         }
         
@@ -1526,18 +1535,33 @@ app.post('/api/auditions/:id/add-previous-season-dancers', authenticateToken, as
     }
     
     // Log audit event
-    await logAuditEvent('previous_season_dancers_added', {
-      auditionId: id,
-      auditionName: auditionData.name,
-      addedCount: addedMembers.length,
-      memberIds: memberIds
-    }, req.user.id, clubId, req);
+    if (addedMembers.length > 0) {
+      await logAuditEvent('previous_season_dancers_added', {
+        auditionId: id,
+        auditionName: auditionData.name,
+        addedCount: addedMembers.length,
+        memberIds: memberIds
+      }, req.user.id, clubId, req);
+    }
+    
+    console.log(`\n📊 Previous Season Dancer Import Summary:`);
+    console.log(`   - Requested: ${memberIds.length} dancers`);
+    console.log(`   - Successfully added: ${addedMembers.length}`);
+    console.log(`   - Errors: ${errors.length}`);
+    if (errors.length > 0) {
+      console.log(`   - Error details:`, errors);
+    }
     
     res.json({
-      success: true,
-      message: `Successfully added ${addedMembers.length} previous season dancer(s)`,
+      success: addedMembers.length > 0,
+      message: addedMembers.length > 0 
+        ? `Successfully added ${addedMembers.length} previous season dancer(s)`
+        : `Failed to add dancers. ${errors.length} error(s) occurred.`,
       added: addedMembers,
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
+      requested: memberIds.length,
+      succeeded: addedMembers.length,
+      failed: errors.length
     });
   } catch (error) {
     const errorContext = logErrorWithContext(error, req, { 
