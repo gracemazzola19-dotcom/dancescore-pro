@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-// No direct API usage needed - data passed as props
+import React, { useState, useEffect } from 'react';
+import api from '../api/axios';
+import toast from 'react-hot-toast';
 
 interface ClubMember {
   id: string;
@@ -10,6 +11,8 @@ interface ClubMember {
   shirtSize: string;
   group: string;
   auditionId: string;
+  seasonId?: string;
+  seasonStatus?: string;
   auditionName: string;
   auditionDate: string;
   averageScore: number;
@@ -20,6 +23,17 @@ interface ClubMember {
   scores: { [judgeName: string]: any };
 }
 
+interface Season {
+  id: string;
+  name: string;
+  date: string;
+  status: string;
+  seasonStatus: 'active' | 'archived';
+  memberCount: number;
+  createdAt?: any;
+  archivedAt?: string;
+}
+
 interface ClubMembersProps {
   clubMembers: ClubMember[];
   onDeleteMember: (memberId: string, memberName: string) => void;
@@ -28,6 +42,59 @@ interface ClubMembersProps {
 
 const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, getLevelColor }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string>('all');
+  const [includeArchived, setIncludeArchived] = useState<boolean>(false);
+  const [loadingSeasons, setLoadingSeasons] = useState(false);
+  const [showSeasonManagement, setShowSeasonManagement] = useState(false);
+
+  useEffect(() => {
+    fetchSeasons();
+  }, [includeArchived]);
+
+  const fetchSeasons = async () => {
+    try {
+      setLoadingSeasons(true);
+      const response = await api.get(`/api/seasons?includeArchived=${includeArchived ? 'true' : 'false'}`);
+      setSeasons(response.data);
+    } catch (error) {
+      console.error('Error fetching seasons:', error);
+      toast.error('Failed to load seasons');
+    } finally {
+      setLoadingSeasons(false);
+    }
+  };
+
+  const handleArchiveSeason = async (seasonId: string, seasonName: string) => {
+    if (!window.confirm(`Are you sure you want to archive "${seasonName}"? Archived seasons will be hidden from the main club members view.`)) {
+      return;
+    }
+
+    try {
+      await api.post(`/api/seasons/${seasonId}/archive`);
+      toast.success(`Season "${seasonName}" archived successfully`);
+      fetchSeasons();
+      // Refresh club members if viewing all or this specific season
+      if (selectedSeasonId === 'all' || selectedSeasonId === seasonId) {
+        window.location.reload(); // Simple way to refresh - could also call a callback prop
+      }
+    } catch (error: any) {
+      console.error('Error archiving season:', error);
+      toast.error(error.response?.data?.error || 'Failed to archive season');
+    }
+  };
+
+  const handleActivateSeason = async (seasonId: string, seasonName: string) => {
+    try {
+      await api.post(`/api/seasons/${seasonId}/activate`);
+      toast.success(`Season "${seasonName}" activated successfully`);
+      fetchSeasons();
+      window.location.reload(); // Refresh to show newly activated members
+    } catch (error: any) {
+      console.error('Error activating season:', error);
+      toast.error(error.response?.data?.error || 'Failed to activate season');
+    }
+  };
 
   const toggleExpanded = (memberId: string) => {
     const newExpanded = new Set(expandedRows);
@@ -39,14 +106,189 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
     setExpandedRows(newExpanded);
   };
 
+  // Filter members by selected season
+  const filteredMembers = selectedSeasonId === 'all' 
+    ? clubMembers.filter(m => includeArchived || m.seasonStatus !== 'archived')
+    : clubMembers.filter(m => (m.seasonId || m.auditionId) === selectedSeasonId);
+
   return (
     <div className="admin-section">
-      <h3>Club Members Database</h3>
-      <p style={{ color: '#666', marginBottom: '1rem', fontSize: '1rem' }}>
-        All dancers who have completed auditions, sorted by highest score
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Club Members Database</h3>
+          <p style={{ color: '#666', margin: '0.5rem 0 0 0', fontSize: '1rem' }}>
+            All dancers who have completed auditions, sorted by highest score
+          </p>
+        </div>
+        <button
+          onClick={() => setShowSeasonManagement(!showSeasonManagement)}
+          className="add-dancer-button"
+          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+        >
+          {showSeasonManagement ? 'Hide' : 'Manage'} Seasons
+        </button>
+      </div>
+
+      {/* Season Filter */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '1rem', 
+        alignItems: 'center', 
+        marginBottom: '1rem',
+        padding: '0.75rem',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '0.5rem',
+        flexWrap: 'wrap'
+      }}>
+        <label style={{ fontWeight: '600', color: '#333' }}>
+          Filter by Season:
+        </label>
+        <select
+          value={selectedSeasonId}
+          onChange={(e) => setSelectedSeasonId(e.target.value)}
+          style={{
+            padding: '0.5rem',
+            borderRadius: '0.25rem',
+            border: '1px solid #ddd',
+            fontSize: '0.9rem',
+            minWidth: '200px'
+          }}
+        >
+          <option value="all">All Active Seasons</option>
+          {seasons
+            .filter(s => includeArchived || s.seasonStatus === 'active')
+            .map(season => (
+              <option key={season.id} value={season.id}>
+                {season.name} ({season.memberCount} members)
+                {season.seasonStatus === 'archived' ? ' [Archived]' : ''}
+              </option>
+            ))}
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(e) => {
+              setIncludeArchived(e.target.checked);
+              if (!e.target.checked && selectedSeasonId !== 'all') {
+                const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
+                if (selectedSeason?.seasonStatus === 'archived') {
+                  setSelectedSeasonId('all');
+                }
+              }
+            }}
+          />
+          <span style={{ fontSize: '0.9rem', color: '#666' }}>Include Archived Seasons</span>
+        </label>
+      </div>
+
+      {/* Season Management Panel */}
+      {showSeasonManagement && (
+        <div style={{ 
+          marginBottom: '1.5rem',
+          padding: '1rem',
+          backgroundColor: '#fff',
+          borderRadius: '0.5rem',
+          border: '2px solid #667eea',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}>
+          <h4 style={{ margin: '0 0 1rem 0', color: '#333', fontSize: '1.1rem', fontWeight: '600' }}>
+            Season Management
+          </h4>
+          {loadingSeasons ? (
+            <p style={{ color: '#666' }}>Loading seasons...</p>
+          ) : seasons.length === 0 ? (
+            <p style={{ color: '#666' }}>No seasons found</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+              {seasons.map(season => (
+                <div
+                  key={season.id}
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: season.seasonStatus === 'archived' ? '#f8f9fa' : '#fff',
+                    borderRadius: '0.5rem',
+                    border: `2px solid ${season.seasonStatus === 'archived' ? '#6c757d' : '#28a745'}`,
+                    opacity: season.seasonStatus === 'archived' ? 0.7 : 1
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                    <div>
+                      <h5 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem', fontWeight: '600', color: '#333' }}>
+                        {season.name}
+                      </h5>
+                      <p style={{ margin: '0', fontSize: '0.85rem', color: '#666' }}>
+                        {season.date ? new Date(season.date).toLocaleDateString() : 'No date'}
+                      </p>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+                        {season.memberCount} member{season.memberCount !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <span
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        backgroundColor: season.seasonStatus === 'archived' ? '#6c757d' : '#28a745',
+                        color: 'white'
+                      }}
+                    >
+                      {season.seasonStatus === 'archived' ? 'ARCHIVED' : 'ACTIVE'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {season.seasonStatus === 'archived' ? (
+                      <button
+                        onClick={() => handleActivateSeason(season.id, season.name)}
+                        className="add-dancer-button"
+                        style={{
+                          padding: '0.5rem 1rem',
+                          fontSize: '0.85rem',
+                          backgroundColor: '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          flex: 1
+                        }}
+                      >
+                        Activate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleArchiveSeason(season.id, season.name)}
+                        className="add-dancer-button"
+                        style={{
+                          padding: '0.5rem 1rem',
+                          fontSize: '0.85rem',
+                          backgroundColor: '#ffc107',
+                          color: '#333',
+                          border: 'none',
+                          flex: 1
+                        }}
+                      >
+                        Archive
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedSeasonId(season.id)}
+                      className="add-dancer-button"
+                      style={{
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.85rem',
+                        flex: 1
+                      }}
+                    >
+                      View
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       
-      {clubMembers.length === 0 ? (
+      {filteredMembers.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
           <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>No club members yet</p>
           <p>When you complete an audition and lock scores, dancers will appear here</p>
@@ -69,7 +311,7 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
             </tr>
           </thead>
           <tbody>
-            {clubMembers.map((member, index) => (
+            {filteredMembers.map((member, index) => (
               <React.Fragment key={member.id}>
                 <tr style={{
                   backgroundColor: getLevelColor(member.level || member.assignedLevel || 'Level 4'),
@@ -95,7 +337,14 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
                   }}>
                     {member.level || member.assignedLevel || 'Level 4'}
                   </td>
-                  <td>{member.auditionName || 'Unknown'}</td>
+                  <td>
+                    <div>{member.auditionName || 'Unknown'}</div>
+                    {member.seasonStatus === 'archived' && (
+                      <div style={{ fontSize: '0.7rem', color: '#6c757d', fontStyle: 'italic' }}>
+                        [Archived Season]
+                      </div>
+                    )}
+                  </td>
                   <td style={{ fontSize: '0.85rem' }}>
                     {member.auditionDate ? new Date(member.auditionDate).toLocaleDateString() : '-'}
                   </td>
@@ -184,7 +433,7 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
                               ? Math.round((allMemberScores.filter(s => s < member.averageScore).length / allMemberScores.length) * 100)
                               : 0;
                             
-                            const rank = [...clubMembers].sort((a, b) => b.averageScore - a.averageScore).findIndex(m => m.id === member.id) + 1;
+                            const rank = [...filteredMembers].sort((a, b) => b.averageScore - a.averageScore).findIndex(m => m.id === member.id) + 1;
                             
                             const stdDevNum = parseFloat(stdDev.toFixed(2));
                             let confidence = 'High';
@@ -210,7 +459,7 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
                                 <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #17a2b8', textAlign: 'center' }}>
                                   <div style={{ fontSize: '0.7rem', color: '#6c757d', marginBottom: '0.25rem' }}>RANKING</div>
                                   <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#17a2b8' }}>#{rank}</div>
-                                  <div style={{ fontSize: '0.7rem', color: '#6c757d' }}>of {clubMembers.length}</div>
+                                  <div style={{ fontSize: '0.7rem', color: '#6c757d' }}>of {filteredMembers.length}</div>
                                 </div>
                                 
                                 <div style={{ 
