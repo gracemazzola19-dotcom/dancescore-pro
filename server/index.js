@@ -844,6 +844,9 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
       // Calculate average score
       const averageScore = judgeCount > 0 ? totalScoreSum / judgeCount : 0;
       
+      // Include hidden field (default to false if not set)
+      const isHidden = dancerData.hidden === true;
+      
       dancers.push({
         id: dancerId,
         name: dancerData.name,
@@ -859,7 +862,8 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
         scores: scoresByJudge,
         videoId: dancerData.videoId || null,
         videoUrl: dancerData.videoUrl || null,
-        videoGroup: dancerData.videoGroup || null
+        videoGroup: dancerData.videoGroup || null,
+        hidden: isHidden // Explicitly include hidden field
       });
     }
     
@@ -871,9 +875,15 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
     });
     
     // Cache the result (but with shorter TTL for this endpoint since dancers can be added)
-    cache.set(cacheKey, dancers, 10); // 10 second cache instead of default 30
+    if (!noCache) {
+      cache.set(cacheKey, dancers, 10); // 10 second cache instead of default 30
+    }
     
-    console.log(`Returning ${dancers.length} dancers for audition ${id} (optimized batch fetch)`);
+    console.log(`\n📊 Dancers endpoint response for audition ${id}:`);
+    console.log(`   Total dancers: ${dancers.length}`);
+    console.log(`   Groups: ${Array.from(new Set(dancers.map(d => d.group))).join(', ')}`);
+    console.log(`   Cache: ${noCache ? 'BYPASSED' : 'set for 10s'}`);
+    
     res.json(dancers);
   } catch (error) {
     console.error('Error fetching dancers for audition:', error);

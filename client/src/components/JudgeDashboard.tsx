@@ -232,8 +232,18 @@ const JudgeDashboard: React.FC = () => {
 
   const fetchDancersForAudition = async (auditionId: string) => {
     try {
-      const response = await api.get(`/api/auditions/${auditionId}/dancers`);
-      setDancers(response.data);
+      // Add timestamp to bypass cache if needed
+      const response = await api.get(`/api/auditions/${auditionId}/dancers?nocache=true&t=${Date.now()}`);
+      const dancersData = Array.isArray(response.data) ? response.data : (response.data.dancers || []);
+      
+      console.log(`Fetched ${dancersData.length} dancers for audition ${auditionId}`);
+      console.log('Sample dancers:', dancersData.slice(0, 3).map((d: Dancer) => ({ 
+        name: d.name, 
+        group: d.group, 
+        hidden: d.hidden 
+      })));
+      
+      setDancers(dancersData);
     } catch (error) {
       console.error('Error fetching dancers for audition:', error);
       toast.error('Failed to fetch dancers');
