@@ -858,8 +858,15 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
       });
     }
     
-    // Sort by audition number
-    dancers.sort((a, b) => a.auditionNumber - b.auditionNumber);
+    // Sort by audition number (handle both string and number formats)
+    dancers.sort((a, b) => {
+      const aNum = parseInt(a.auditionNumber) || 0;
+      const bNum = parseInt(b.auditionNumber) || 0;
+      return aNum - bNum;
+    });
+    
+    // Cache the result (but with shorter TTL for this endpoint since dancers can be added)
+    cache.set(cacheKey, dancers, 10); // 10 second cache instead of default 30
     
     console.log(`Returning ${dancers.length} dancers for audition ${id} (optimized batch fetch)`);
     res.json(dancers);
