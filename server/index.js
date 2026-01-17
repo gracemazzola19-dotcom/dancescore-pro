@@ -7992,3 +7992,4 @@ app.listen(PORT, () => {
     console.log(`✅ Serving React app from client/build`);
   }
 });
+// Season-based club members system deployed
