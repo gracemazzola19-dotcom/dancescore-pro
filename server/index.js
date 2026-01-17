@@ -4770,10 +4770,19 @@ app.get('/api/seasons', authenticateToken, async (req, res) => {
       }
       
       // Count club members for this season
-      const membersSnapshot = await db.collection('club_members')
+      // Try seasonId first, fallback to auditionId for backwards compatibility
+      let membersSnapshot = await db.collection('club_members')
         .where('clubId', '==', clubId)
         .where('seasonId', '==', doc.id)
         .get();
+      
+      // If no members found by seasonId, try auditionId (for older records)
+      if (membersSnapshot.empty) {
+        membersSnapshot = await db.collection('club_members')
+          .where('clubId', '==', clubId)
+          .where('auditionId', '==', doc.id)
+          .get();
+      }
       
       seasons.push({
         id: doc.id,
