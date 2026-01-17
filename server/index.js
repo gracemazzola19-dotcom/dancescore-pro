@@ -4889,6 +4889,219 @@ app.post('/api/seasons/:id/activate', authenticateToken, async (req, res) => {
   }
 });
 
+// Import dancers with scores endpoint
+app.post('/api/auditions/import-dancers', authenticateToken, async (req, res) => {
+  try {
+    const clubId = getClubId(req);
+    const { auditionName, dancers } = req.body;
+    
+    if (!auditionName || !dancers || !Array.isArray(dancers) || dancers.length === 0) {
+      return res.status(400).json({ 
+        error: 'auditionName and dancers array are required',
+        example: {
+          auditionName: 'Fall 2025 Auditions',
+          dancers: [
+            { name: 'John Doe', score: 25.5, email: 'john@example.com', phone: '123-456-7890' },
+            { name: 'Jane Smith', score: 28.0 }
+          ]
+        }
+      });
+    }
+    
+    // Find the audition by name
+    const auditionsSnapshot = await db.collection('auditions')
+      .where('clubId', '==', clubId)
+      .where('name', '==', auditionName)
+      .limit(1)
+      .get();
+    
+    if (auditionsSnapshot.empty) {
+      return res.status(404).json({ 
+        error: `Audition "${auditionName}" not found. Please check the exact name.`,
+        availableAuditions: 'Check your auditions list for the exact name'
+      });
+    }
+    
+    const auditionDoc = auditionsSnapshot.docs[0];
+    const auditionId = auditionDoc.id;
+    const auditionData = auditionDoc.data();
+    
+    console.log(`\n📥 Starting import of ${dancers.length} dancers to "${auditionName}" (ID: ${auditionId})`);
+    
+    const results = {
+      success: [],
+      errors: [],
+      skipped: []
+    };
+    
+    // Get existing dancers to avoid duplicates
+    const existingDancersSnapshot = await db.collection('dancers')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', auditionId)
+      .get();
+    
+    const existingDancerNames = new Set(
+      existingDancersSnapshot.docs.map(doc => doc.data().name.toLowerCase().trim())
+    );
+    
+    // Get the highest audition number for this audition
+    let maxAuditionNumber = 0;
+    for (const doc of existingDancersSnapshot.docs) {
+      const num = parseInt(doc.data().auditionNumber) || 0;
+      if (num > maxAuditionNumber) {
+        maxAuditionNumber = num;
+      }
+    }
+    
+    // Process each dancer
+    for (let i = 0; i < dancers.length; i++) {
+      const dancerData = dancers[i];
+      const dancerName = (dancerData.name || '').trim();
+      const score = parseFloat(dancerData.score) || 0;
+      
+      if (!dancerName) {
+        results.errors.push({ index: i, error: 'Missing dancer name' });
+        continue;
+      }
+      
+      // Check for duplicates (case-insensitive)
+      if (existingDancerNames.has(dancerName.toLowerCase())) {
+        results.skipped.push({ 
+          name: dancerName, 
+          reason: 'Already exists in this audition' 
+        });
+        continue;
+      }
+      
+      try {
+        // Generate audition number
+        maxAuditionNumber++;
+        const auditionNumber = maxAuditionNumber.toString().padStart(3, '0');
+        
+        // Create dancer record
+        const newDancerData = {
+          name: dancerName,
+          auditionNumber: auditionNumber,
+          email: (dancerData.email || '').trim(),
+          phone: (dancerData.phone || '').trim(),
+          shirtSize: (dancerData.shirtSize || '').trim(),
+          previousMember: dancerData.previousMember || 'no',
+          previousLevel: dancerData.previousLevel || null,
+          clubId: clubId,
+          auditionId: auditionId,
+          group: dancerData.group || `Group ${Math.ceil((i + 1) / 10)}`, // Auto-assign groups
+          createdAt: new Date(),
+          scores: []
+        };
+        
+        const dancerRef = await db.collection('dancers').add(newDancerData);
+        const dancerId = dancerRef.id;
+        
+        // Create a score record with the overall score
+        // Distribute the score across categories proportionally
+        // Total is 32 points: kick(4) + jump(4) + turn(4) + performance(4) + execution(8) + technique(8)
+        const totalPossible = 32;
+        const scoreRatio = score / totalPossible;
+        
+        // Distribute proportionally
+        const kick = Math.round(4 * scoreRatio * 10) / 10;
+        const jump = Math.round(4 * scoreRatio * 10) / 10;
+        const turn = Math.round(4 * scoreRatio * 10) / 10;
+        const performance = Math.round(4 * scoreRatio * 10) / 10;
+        const execution = Math.round(8 * scoreRatio * 10) / 10;
+        const technique = Math.round(8 * scoreRatio * 10) / 10;
+        
+        // Adjust to ensure total matches exactly
+        const calculatedTotal = kick + jump + turn + performance + execution + technique;
+        const difference = score - calculatedTotal;
+        // Add difference to technique (largest category)
+        const adjustedTechnique = technique + difference;
+        
+        const scoreData = {
+          dancerId: dancerId,
+          auditionId: auditionId,
+          clubId: clubId,
+          judgeId: 'imported',
+          judgeName: 'Imported Data',
+          judgeEmail: 'import@dancescore.pro',
+          scores: {
+            kick: Math.max(0, Math.min(4, kick)),
+            jump: Math.max(0, Math.min(4, jump)),
+            turn: Math.max(0, Math.min(4, turn)),
+            performance: Math.max(0, Math.min(4, performance)),
+            execution: Math.max(0, Math.min(8, execution)),
+            technique: Math.max(0, Math.min(8, adjustedTechnique))
+          },
+          total: score,
+          submitted: true,
+          submittedAt: new Date().toISOString(),
+          imported: true,
+          importedAt: new Date().toISOString(),
+          importedBy: req.user.id || 'admin'
+        };
+        
+        const scoreRef = await db.collection('scores').add(scoreData);
+        
+        // Update dancer's scores array
+        await dancerRef.update({
+          scores: [scoreRef.id],
+          averageScore: score,
+          overallScore: score
+        });
+        
+        existingDancerNames.add(dancerName.toLowerCase());
+        
+        results.success.push({
+          name: dancerName,
+          auditionNumber: auditionNumber,
+          score: score,
+          dancerId: dancerId
+        });
+        
+        console.log(`   ✅ Imported: ${dancerName} (#${auditionNumber}) - Score: ${score.toFixed(2)}`);
+      } catch (error) {
+        console.error(`   ❌ Error importing ${dancerName}:`, error);
+        results.errors.push({ 
+          name: dancerName, 
+          error: error.message 
+        });
+      }
+    }
+    
+    // Log audit event
+    await logAuditEvent('dancers_imported', {
+      auditionId: auditionId,
+      auditionName: auditionName,
+      importedCount: results.success.length,
+      errorCount: results.errors.length,
+      skippedCount: results.skipped.length
+    }, req.user.id, clubId, req);
+    
+    console.log(`\n📊 Import Summary:`);
+    console.log(`   ✅ Successfully imported: ${results.success.length}`);
+    console.log(`   ⚠️  Errors: ${results.errors.length}`);
+    console.log(`   ⏭️  Skipped: ${results.skipped.length}`);
+    
+    res.json({
+      success: true,
+      message: `Imported ${results.success.length} dancer(s) to "${auditionName}"`,
+      auditionId: auditionId,
+      results: results
+    });
+  } catch (error) {
+    const errorContext = logErrorWithContext(error, req, {
+      operation: 'import_dancers',
+      auditionName: req.body.auditionName
+    });
+    res.status(500).json({
+      error: process.env.NODE_ENV === 'production'
+        ? 'Failed to import dancers. Please try again.'
+        : error.message,
+      errorId: errorContext.timestamp
+    });
+  }
+});
+
 // Get dancers with scores (for results/audition pages)
 app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
   try {
