@@ -4834,39 +4834,51 @@ app.post('/api/seasons/:id/archive', authenticateToken, async (req, res) => {
       archivedBy: req.user.id || 'admin'
     });
     
-    // Update all club_members for this season
+    // DELETE all club_members for this season (remove from database when archived)
     const membersSnapshot = await db.collection('club_members')
       .where('clubId', '==', clubId)
       .where('seasonId', '==', id)
       .get();
     
-    const batch = db.batch();
-    let updateCount = 0;
-    
-    for (const memberDoc of membersSnapshot.docs) {
-      batch.update(memberDoc.ref, {
-        seasonStatus: 'archived',
-        archivedAt: new Date().toISOString()
-      });
-      updateCount++;
+    // Also try by auditionId for backwards compatibility
+    let allMembers = [...membersSnapshot.docs];
+    if (membersSnapshot.empty) {
+      const byAuditionId = await db.collection('club_members')
+        .where('clubId', '==', clubId)
+        .where('auditionId', '==', id)
+        .get();
+      allMembers = [...byAuditionId.docs];
     }
     
-    await batch.commit();
+    let deletedCount = 0;
+    
+    // Delete in batches (Firestore batch limit is 500)
+    for (let i = 0; i < allMembers.length; i += 500) {
+      const batch = db.batch();
+      const batchMembers = allMembers.slice(i, i + 500);
+      
+      batchMembers.forEach(memberDoc => {
+        batch.delete(memberDoc.ref);
+      });
+      
+      await batch.commit();
+      deletedCount += batchMembers.length;
+    }
     
     // Log audit event
     await logAuditEvent('season_archived', {
       seasonId: id,
       seasonName: auditionData.name,
-      memberCount: updateCount
+      membersDeleted: deletedCount
     }, req.user.id, clubId, req);
     
-    console.log(`✅ Archived season ${id} with ${updateCount} members`);
+    console.log(`✅ Archived season ${id} - deleted ${deletedCount} club members`);
     
     res.json({
       success: true,
-      message: `Season "${auditionData.name}" archived successfully`,
+      message: `Season "${auditionData.name}" archived successfully. ${deletedCount} dancers removed from database.`,
       seasonId: id,
-      memberCount: updateCount
+      membersDeleted: deletedCount
     });
   } catch (error) {
     const errorContext = logErrorWithContext(error, req, {
@@ -4906,38 +4918,116 @@ app.post('/api/seasons/:id/activate', authenticateToken, async (req, res) => {
       activatedBy: req.user.id || 'admin'
     });
     
-    // Update all club_members for this season
-    const membersSnapshot = await db.collection('club_members')
+    // RECREATE club_members from dancers collection when unarchiving
+    // Get all dancers for this audition
+    const dancersSnapshot = await db.collection('dancers')
       .where('clubId', '==', clubId)
-      .where('seasonId', '==', id)
+      .where('auditionId', '==', id)
       .get();
     
-    const batch = db.batch();
-    let updateCount = 0;
+    console.log(`   Found ${dancersSnapshot.size} dancers to restore as club members`);
     
-    for (const memberDoc of membersSnapshot.docs) {
-      batch.update(memberDoc.ref, {
-        seasonStatus: 'active'
-      });
-      updateCount++;
+    let restoredCount = 0;
+    const errors = [];
+    
+    for (const dancerDoc of dancersSnapshot.docs) {
+      try {
+        const dancerData = dancerDoc.data();
+        const dancerId = dancerDoc.id;
+        
+        // Get scores for this dancer to calculate average
+        const scoresSnapshot = await db.collection('scores')
+          .where('clubId', '==', clubId)
+          .where('dancerId', '==', dancerId)
+          .where('auditionId', '==', id)
+          .where('submitted', '==', true)
+          .get();
+        
+        // Calculate average score
+        let totalScoreSum = 0;
+        let judgeCount = 0;
+        const scoresByJudge = {};
+        
+        for (const scoreDoc of scoresSnapshot.docs) {
+          const scoreData = scoreDoc.data();
+          const scoreValues = scoreData.scores || scoreData;
+          const total = (scoreValues.kick || 0) + (scoreValues.jump || 0) + 
+                       (scoreValues.turn || 0) + (scoreValues.performance || 0) + 
+                       (scoreValues.execution || 0) + (scoreValues.technique || 0);
+          
+          scoresByJudge[scoreData.judgeName || scoreData.judgeId || 'Unknown'] = {
+            kick: scoreValues.kick || 0,
+            jump: scoreValues.jump || 0,
+            turn: scoreValues.turn || 0,
+            performance: scoreValues.performance || 0,
+            execution: scoreValues.execution || 0,
+            technique: scoreValues.technique || 0,
+            total: total,
+            comments: scoreData.comments || ''
+          };
+          
+          totalScoreSum += total;
+          judgeCount++;
+        }
+        
+        const averageScore = judgeCount > 0 ? totalScoreSum / judgeCount : 0;
+        const assignedLevel = dancerData.assignedLevel || 'Level 4';
+        
+        // Create club member record
+        const clubMemberData = {
+          id: String(dancerId),
+          name: String(dancerData.name || ''),
+          email: String(dancerData.email || ''),
+          phone: String(dancerData.phone || ''),
+          shirtSize: String(dancerData.shirtSize || ''),
+          auditionNumber: String(dancerData.auditionNumber || ''),
+          dancerGroup: String(dancerData.group || ''),
+          averageScore: Number(averageScore.toFixed(2)),
+          rank: 0, // Will be recalculated if needed
+          previousMember: String(dancerData.previousMember || ''),
+          previousLevel: String(dancerData.previousLevel || ''),
+          level: String(assignedLevel),
+          assignedLevel: String(assignedLevel),
+          clubId: clubId,
+          auditionId: String(id),
+          seasonId: String(id),
+          seasonStatus: 'active',
+          auditionName: String(auditionData.name || ''),
+          auditionDate: String(auditionData.date || ''),
+          transferredAt: new Date().toISOString(),
+          transferredBy: String(req.user?.id || 'admin'),
+          deliberationPhase: 1,
+          overallScore: Number(averageScore.toFixed(2)),
+          scores: scoresByJudge
+        };
+        
+        await db.collection('club_members').add(clubMemberData);
+        restoredCount++;
+      } catch (error) {
+        errors.push({ dancerId: dancerDoc.id, error: error.message });
+        console.error(`   ❌ Error restoring dancer ${dancerDoc.id}:`, error);
+      }
     }
-    
-    await batch.commit();
     
     // Log audit event
     await logAuditEvent('season_activated', {
       seasonId: id,
       seasonName: auditionData.name,
-      memberCount: updateCount
+      membersRestored: restoredCount,
+      errors: errors.length
     }, req.user.id, clubId, req);
     
-    console.log(`✅ Activated season ${id} with ${updateCount} members`);
+    console.log(`✅ Activated season ${id} - restored ${restoredCount} club members`);
+    if (errors.length > 0) {
+      console.log(`   ⚠️  ${errors.length} errors during restoration`);
+    }
     
     res.json({
       success: true,
-      message: `Season "${auditionData.name}" activated successfully`,
+      message: `Season "${auditionData.name}" activated successfully. ${restoredCount} dancers restored to database.`,
       seasonId: id,
-      memberCount: updateCount
+      membersRestored: restoredCount,
+      errors: errors.length > 0 ? errors : undefined
     });
   } catch (error) {
     const errorContext = logErrorWithContext(error, req, {
