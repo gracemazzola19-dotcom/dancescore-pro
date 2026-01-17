@@ -133,8 +133,13 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
     }
 
     try {
-      await api.delete(`/api/auditions/${seasonId}`);
-      toast.success(`Season "${seasonName}" permanently deleted`);
+      const response = await api.delete(`/api/auditions/${seasonId}`);
+      // Check if it was already deleted
+      if (response.data?.alreadyDeleted) {
+        toast.success(`Season "${seasonName}" was already deleted`);
+      } else {
+        toast.success(`Season "${seasonName}" permanently deleted`);
+      }
       fetchSeasons();
       // Clear cache to remove stale data
       localStorage.removeItem('clubMembers');
@@ -143,6 +148,15 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
       window.location.reload();
     } catch (error: any) {
       console.error('Error deleting season:', error);
+      // If 404 and already deleted, treat as success
+      if (error.response?.status === 404 && error.response?.data?.alreadyDeleted) {
+        toast.success(`Season "${seasonName}" was already deleted`);
+        fetchSeasons();
+        localStorage.removeItem('clubMembers');
+        localStorage.removeItem('clubMembers_time');
+        window.location.reload();
+        return;
+      }
       const errorMsg = error.response?.data?.error || error.message || 'Failed to delete season';
       toast.error(errorMsg);
     }
