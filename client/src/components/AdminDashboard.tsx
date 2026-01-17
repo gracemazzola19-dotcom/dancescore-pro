@@ -446,7 +446,7 @@ const AdminDashboard: React.FC = () => {
       
       if (cachedData && cacheTime) {
         const timeDiff = Date.now() - parseInt(cacheTime || '0');
-        if (timeDiff < 300000) { // 5 minutes
+        if (timeDiff < 60000) { // 1 minute - shorter to avoid stale counts (e.g. after Delete All)
           const members = JSON.parse(cachedData || '[]');
           setClubMembers(members);
           return;

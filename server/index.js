@@ -4918,6 +4918,29 @@ app.post('/api/seasons/:id/activate', authenticateToken, async (req, res) => {
       activatedBy: req.user.id || 'admin'
     });
     
+    // DELETE any existing club_members for this season first (prevents duplicates)
+    const existingMembers = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .where('seasonId', '==', id)
+      .get();
+    
+    const alsoByAudition = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    
+    const toDelete = new Map();
+    [...existingMembers.docs, ...alsoByAudition.docs].forEach(doc => toDelete.set(doc.id, doc));
+    
+    if (toDelete.size > 0) {
+      for (let i = 0; i < [...toDelete.values()].length; i += 500) {
+        const batch = db.batch();
+        [...toDelete.values()].slice(i, i + 500).forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+      console.log(`   Removed ${toDelete.size} existing club_members to avoid duplicates`);
+    }
+    
     // RECREATE club_members from dancers collection when unarchiving
     // Get all dancers for this audition
     const dancersSnapshot = await db.collection('dancers')

@@ -133,6 +133,9 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
     try {
       await api.delete('/api/club-members/clear');
       toast.success(`Successfully deleted all ${memberCount} club member(s)`);
+      // Clear cache so reload doesn't show stale 300+ from before delete
+      localStorage.removeItem('clubMembers');
+      localStorage.removeItem('clubMembers_time');
       // Refresh the page to show empty state
       window.location.reload();
     } catch (error: any) {
