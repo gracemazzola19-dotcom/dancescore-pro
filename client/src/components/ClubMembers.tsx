@@ -114,6 +114,34 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
     }
   };
 
+  const handleDeleteAllClubMembers = async () => {
+    const memberCount = clubMembers.length;
+    if (memberCount === 0) {
+      toast.error('No club members to delete');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `⚠️ WARNING: This will permanently delete ALL ${memberCount} club member(s) from the database!\n\n` +
+      `This action cannot be undone. Are you absolutely sure?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await api.delete('/api/club-members/clear');
+      toast.success(`Successfully deleted all ${memberCount} club member(s)`);
+      // Refresh the page to show empty state
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error deleting all club members:', error);
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to delete club members';
+      toast.error(errorMsg);
+    }
+  };
+
   const toggleExpanded = (memberId: string) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(memberId)) {
