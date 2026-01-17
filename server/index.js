@@ -723,11 +723,16 @@ app.get('/api/auditions/:id/dancers', authenticateToken, async (req, res) => {
     const clubId = getClubId(req);
     
     // Check cache first (key includes clubId for multi-tenant safety)
+    // Allow cache bypass with ?nocache=true query parameter
     const cacheKey = `dancers_${clubId}_${id}`;
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) {
-      console.log(`Cache hit for dancers ${id} (club ${clubId})`);
-      return res.json(cachedData);
+    const noCache = req.query.nocache === 'true';
+    
+    if (!noCache) {
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
+        console.log(`Cache hit for dancers ${id} (club ${clubId})`);
+        return res.json(cachedData);
+      }
     }
     
     // Check if audition exists and belongs to user's club
