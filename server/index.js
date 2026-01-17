@@ -4820,11 +4820,12 @@ app.get('/api/seasons', authenticateToken, async (req, res) => {
         continue;
       }
       
-      // Count club members for this season
+      // Count club members for this season (only active members, not archived)
       // Try seasonId first, fallback to auditionId for backwards compatibility
       let membersSnapshot = await db.collection('club_members')
         .where('clubId', '==', clubId)
         .where('seasonId', '==', doc.id)
+        .where('seasonStatus', '==', 'active')
         .get();
       
       // If no members found by seasonId, try auditionId (for older records)
@@ -4832,6 +4833,7 @@ app.get('/api/seasons', authenticateToken, async (req, res) => {
         membersSnapshot = await db.collection('club_members')
           .where('clubId', '==', clubId)
           .where('auditionId', '==', doc.id)
+          .where('seasonStatus', '==', 'active')
           .get();
       }
       
