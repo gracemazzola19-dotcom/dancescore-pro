@@ -48,6 +48,10 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
   const [loadingSeasons, setLoadingSeasons] = useState(false);
   const [showSeasonManagement, setShowSeasonManagement] = useState(false);
 
+  // Filter out archived members from the passed clubMembers prop
+  // This ensures archived seasons never mix with active seasons
+  const activeClubMembers = clubMembers.filter((m: any) => m.seasonStatus !== 'archived');
+
   useEffect(() => {
     fetchSeasons();
   }, [includeArchived]);
@@ -107,10 +111,11 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
   };
 
   // Filter members by selected season
-  // Archived seasons should NEVER show in "all" unless explicitly requested
+  // Archived seasons should NEVER show in "all" view - they must be explicitly selected
+  // Use activeClubMembers (already filtered) for "all" view to ensure no archived members
   const filteredMembers = selectedSeasonId === 'all' 
-    ? clubMembers.filter(m => m.seasonStatus !== 'archived') // Never show archived in "all" view
-    : clubMembers.filter(m => (m.seasonId || m.auditionId) === selectedSeasonId);
+    ? activeClubMembers // Only show active members in "all" view
+    : clubMembers.filter(m => (m.seasonId || m.auditionId) === selectedSeasonId); // When viewing specific season, show all members for that season
 
   // Check if currently viewing an archived season
   const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
@@ -473,8 +478,8 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
                             const min = Math.min(...scores);
                             const max = Math.max(...scores);
                             
-                            // Calculate overall percentile compared to all club members
-                            const allMemberScores = clubMembers.map(m => m.averageScore).sort((a, b) => a - b);
+                            // Calculate overall percentile compared to active club members only (exclude archived)
+                            const allMemberScores = activeClubMembers.map(m => m.averageScore).sort((a, b) => a - b);
                             const percentile = allMemberScores.length > 1
                               ? Math.round((allMemberScores.filter(s => s < member.averageScore).length / allMemberScores.length) * 100)
                               : 0;

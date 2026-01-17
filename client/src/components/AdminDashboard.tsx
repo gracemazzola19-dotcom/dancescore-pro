@@ -900,9 +900,9 @@ const AdminDashboard: React.FC = () => {
             >
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Dancers</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
-                {clubMembers.length}
+                {clubMembers.filter((m: any) => m.seasonStatus !== 'archived').length}
               </div>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage dancer database</p>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Active season dancers only</p>
             </div>
 
             {/* Attendance Widget */}
