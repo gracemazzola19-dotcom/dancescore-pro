@@ -215,8 +215,23 @@ const Deliberations: React.FC = () => {
       navigate('/admin');
     } catch (error: any) {
       console.error('Error submitting deliberations:', error);
-      const errorMsg = error.response?.data?.error || error.message || 'Failed to submit deliberations';
-      toast.error(errorMsg);
+      const errorResponse = error.response?.data || {};
+      const errorMsg = errorResponse.error || error.message || 'Failed to submit deliberations';
+      
+      // If already submitted, provide helpful message
+      if (errorMsg.includes('already been submitted')) {
+        toast.error(
+          `Deliberations already submitted! ${errorResponse.submittedAt ? `Submitted on: ${new Date(errorResponse.submittedAt).toLocaleString()}` : ''}`,
+          { duration: 5000 }
+        );
+      } else if (errorResponse.errors && Array.isArray(errorResponse.errors)) {
+        // Show validation errors
+        const errorList = errorResponse.errors.slice(0, 3).join(', ');
+        const more = errorResponse.errors.length > 3 ? ` (and ${errorResponse.errors.length - 3} more)` : '';
+        toast.error(`${errorMsg}: ${errorList}${more}`, { duration: 6000 });
+      } else {
+        toast.error(errorMsg);
+      }
     } finally {
       setSubmitting(false);
     }
