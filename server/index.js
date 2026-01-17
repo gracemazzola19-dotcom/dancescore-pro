@@ -1669,18 +1669,36 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
     }
     
     // Check if deliberations have already been submitted (idempotency check)
+    // BUT allow resubmission if no club_members exist for this audition (was deleted/archived)
     const existingSubmission = await db.collection('deliberations')
       .where('auditionId', '==', id)
       .where('submitted', '==', true)
       .get();
     
-    if (!existingSubmission.empty) {
+    // Check if club_members exist for this audition
+    const existingClubMembers = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    
+    // If deliberations were submitted but club_members were deleted/archived, allow resubmission
+    if (!existingSubmission.empty && existingClubMembers.size > 0) {
       const submittedData = existingSubmission.docs[0].data();
       return res.status(400).json({ 
-        error: 'Deliberations have already been submitted for this audition',
+        error: 'Deliberations have already been submitted for this audition and dancers are already in the database',
         submittedAt: submittedData.submittedAt,
-        submittedBy: submittedData.updatedBy
+        submittedBy: submittedData.updatedBy,
+        clubMembersCount: existingClubMembers.size
       });
+    }
+    
+    // If previously submitted but no club_members exist, allow resubmission (clear old submission)
+    if (!existingSubmission.empty && existingClubMembers.size === 0) {
+      console.log(`   ℹ️  Allowing resubmission - deliberations were submitted but no club_members exist (was deleted/archived)`);
+      // Clear the old submission record to allow resubmission
+      for (const doc of existingSubmission.docs) {
+        await doc.ref.delete();
+      }
     }
     
     // Pre-submission validation: Check that all required data exists
