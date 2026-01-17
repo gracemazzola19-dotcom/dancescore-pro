@@ -1907,7 +1907,7 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
         clubId: clubId, // Multi-tenant: ensure clubId is set
         auditionId: String(id),
         seasonId: String(id), // Season ID (same as auditionId)
-        seasonStatus: String(auditionData.seasonStatus || 'active'), // Season status (active/archived)
+        seasonStatus: 'active', // Always set to active when transferring (new submission creates active members)
         auditionName: String(auditionData.name || ''),
         auditionDate: String(auditionData.date || ''),
         transferredAt: new Date().toISOString(),
