@@ -4820,21 +4820,31 @@ app.get('/api/seasons', authenticateToken, async (req, res) => {
         continue;
       }
       
-      // Count club members for this season (only active members, not archived)
+      // Count club members for this season
+      // If including archived seasons, count all members. Otherwise, only count active members.
       // Try seasonId first, fallback to auditionId for backwards compatibility
-      let membersSnapshot = await db.collection('club_members')
+      let membersQuery = db.collection('club_members')
         .where('clubId', '==', clubId)
-        .where('seasonId', '==', doc.id)
-        .where('seasonStatus', '==', 'active')
-        .get();
+        .where('seasonId', '==', doc.id);
+      
+      // Only filter by seasonStatus if not including archived (shows active count for archived seasons)
+      if (includeArchived !== 'true' || seasonStatus === 'active') {
+        membersQuery = membersQuery.where('seasonStatus', '==', 'active');
+      }
+      
+      let membersSnapshot = await membersQuery.get();
       
       // If no members found by seasonId, try auditionId (for older records)
       if (membersSnapshot.empty) {
-        membersSnapshot = await db.collection('club_members')
+        membersQuery = db.collection('club_members')
           .where('clubId', '==', clubId)
-          .where('auditionId', '==', doc.id)
-          .where('seasonStatus', '==', 'active')
-          .get();
+          .where('auditionId', '==', doc.id);
+        
+        if (includeArchived !== 'true' || seasonStatus === 'active') {
+          membersQuery = membersQuery.where('seasonStatus', '==', 'active');
+        }
+        
+        membersSnapshot = await membersQuery.get();
       }
       
       seasons.push({
