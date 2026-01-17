@@ -1998,7 +1998,27 @@ app.delete('/api/auditions/:id', authenticateToken, async (req, res) => {
     // Check if audition exists and belongs to user's club
     const auditionDoc = await db.collection('auditions').doc(id).get();
     if (!auditionDoc.exists) {
-      return res.status(404).json({ error: 'Audition not found' });
+      // Audition doesn't exist - might have been already deleted
+      // Check if there are any related records that need cleanup
+      const clubMembersSnapshot = await db.collection('club_members')
+        .where('clubId', '==', clubId)
+        .where('auditionId', '==', id)
+        .get();
+      
+      if (clubMembersSnapshot.empty) {
+        // No related data, return success (already deleted)
+        console.log(`⚠️ Audition ${id} doesn't exist - already deleted or never existed`);
+        return res.json({ 
+          message: 'Audition already deleted',
+          alreadyDeleted: true
+        });
+      }
+      
+      // Related data exists but audition doesn't - return error
+      return res.status(404).json({ 
+        error: 'Audition not found, but related data still exists',
+        relatedDataCount: clubMembersSnapshot.size
+      });
     }
     
     const auditionData = auditionDoc.data();
