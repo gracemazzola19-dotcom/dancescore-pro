@@ -200,18 +200,23 @@ const Deliberations: React.FC = () => {
     setSubmitting(true);
     
     try {
-      await api.post(`/api/deliberations/${id}`, {
-        levelAssignments,
-        levelCounts
+      // Use the correct endpoint that transfers dancers to club_members
+      const response = await api.post(`/api/auditions/${id}/submit-deliberations`, {
+        levelAssignments
       });
       
-      toast.success('Deliberations saved successfully!');
+      if (response.data.success) {
+        toast.success(`Successfully transferred ${response.data.count || dancers.length} dancers to club database!`);
+      } else {
+        toast.success('Deliberations submitted successfully!');
+      }
       
       // Navigate back to admin dashboard
       navigate('/admin');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting deliberations:', error);
-      toast.error('Failed to submit deliberations');
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to submit deliberations';
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
