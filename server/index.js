@@ -1375,18 +1375,42 @@ app.get('/api/auditions/:id/previous-season-dancers', authenticateToken, async (
       return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
     }
     
-    // Get all club members from previous auditions (not this one)
-    const previousMembersSnapshot = await db.collection('club_members')
+    // Get all club members from previous seasons (not the current season)
+    // Use seasonId for filtering (falls back to auditionId for backwards compatibility)
+    const allMembersSnapshot = await db.collection('club_members')
       .where('clubId', '==', clubId)
       .get();
     
     const previousDancers = [];
-    for (const doc of previousMembersSnapshot.docs) {
+    const seasonMap = new Map(); // Track unique seasons for grouping
+    
+    for (const doc of allMembersSnapshot.docs) {
       const memberData = doc.data();
+      const memberSeasonId = memberData.seasonId || memberData.auditionId;
       
-      // Skip members from the current audition
-      if (memberData.auditionId === id) {
+      // Skip members from the current season/audition
+      if (memberSeasonId === id || memberData.auditionId === id) {
         continue;
+      }
+      
+      // Optionally filter to only active seasons (can be made configurable via query param)
+      // For now, we include both active and archived seasons
+      const seasonStatus = memberData.seasonStatus || 'active';
+      
+      // Track season info
+      if (memberSeasonId && !seasonMap.has(memberSeasonId)) {
+        seasonMap.set(memberSeasonId, {
+          seasonId: memberSeasonId,
+          seasonName: memberData.auditionName || 'Previous Season',
+          seasonDate: memberData.auditionDate || '',
+          seasonStatus: seasonStatus,
+          memberCount: 0
+        });
+      }
+      
+      const seasonInfo = seasonMap.get(memberSeasonId);
+      if (seasonInfo) {
+        seasonInfo.memberCount++;
       }
       
       previousDancers.push({
@@ -1400,18 +1424,38 @@ app.get('/api/auditions/:id/previous-season-dancers', authenticateToken, async (
         averageScore: memberData.averageScore || memberData.overallScore || 0,
         scores: memberData.scores || {},
         auditionId: memberData.auditionId || null,
+        seasonId: memberSeasonId || null, // Include seasonId
+        seasonStatus: seasonStatus, // Include season status
         auditionName: memberData.auditionName || 'Previous Season',
         auditionDate: memberData.auditionDate || '',
         transferredAt: memberData.transferredAt || null
       });
     }
     
-    // Sort by name for easier selection
-    previousDancers.sort((a, b) => a.name.localeCompare(b.name));
+    // Sort by season date (most recent first), then by name within each season
+    previousDancers.sort((a, b) => {
+      // First, sort by season date
+      const dateA = a.auditionDate ? new Date(a.auditionDate).getTime() : 0;
+      const dateB = b.auditionDate ? new Date(b.auditionDate).getTime() : 0;
+      if (dateB !== dateA) {
+        return dateB - dateA; // Most recent first
+      }
+      // Then by name
+      return a.name.localeCompare(b.name);
+    });
+    
+    // Convert seasonMap to array for response
+    const seasons = Array.from(seasonMap.values())
+      .sort((a, b) => {
+        const dateA = a.seasonDate ? new Date(a.seasonDate).getTime() : 0;
+        const dateB = b.seasonDate ? new Date(b.seasonDate).getTime() : 0;
+        return dateB - dateA; // Most recent first
+      });
     
     res.json({
       previousDancers,
-      count: previousDancers.length
+      count: previousDancers.length,
+      seasons: seasons // Include season information for UI grouping
     });
   } catch (error) {
     logErrorWithContext(error, req);

@@ -326,6 +326,7 @@ const Deliberations: React.FC = () => {
     try {
       const response = await api.get(`/api/auditions/${id}/previous-season-dancers`);
       setPreviousSeasonDancers(response.data.previousDancers || []);
+      // Note: response.data.seasons contains season grouping info if needed for UI enhancement
       setShowPreviousSeason(true);
     } catch (error) {
       console.error('Error fetching previous season dancers:', error);
