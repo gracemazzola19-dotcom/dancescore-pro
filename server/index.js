@@ -4692,6 +4692,203 @@ app.get('/api/club-members', authenticateToken, async (req, res) => {
   }
 });
 
+// Get all seasons (auditions as seasons)
+app.get('/api/seasons', authenticateToken, async (req, res) => {
+  try {
+    const clubId = getClubId(req);
+    const { includeArchived } = req.query;
+    
+    // Get all auditions for this club
+    const auditionsSnapshot = await db.collection('auditions')
+      .where('clubId', '==', clubId)
+      .get();
+    
+    const seasons = [];
+    
+    for (const doc of auditionsSnapshot.docs) {
+      const auditionData = doc.data();
+      const seasonStatus = auditionData.seasonStatus || 'active';
+      
+      // Filter archived if not requested
+      if (includeArchived !== 'true' && seasonStatus === 'archived') {
+        continue;
+      }
+      
+      // Count club members for this season
+      const membersSnapshot = await db.collection('club_members')
+        .where('clubId', '==', clubId)
+        .where('seasonId', '==', doc.id)
+        .get();
+      
+      seasons.push({
+        id: doc.id,
+        name: auditionData.name,
+        date: auditionData.date,
+        status: auditionData.status || 'draft',
+        seasonStatus: seasonStatus,
+        memberCount: membersSnapshot.size,
+        createdAt: auditionData.createdAt?.toDate?.() || auditionData.createdAt,
+        archivedAt: auditionData.archivedAt || null
+      });
+    }
+    
+    // Sort by date descending (newest first)
+    seasons.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    res.json(seasons);
+  } catch (error) {
+    console.error('Error fetching seasons:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Archive a season (audition)
+app.post('/api/seasons/:id/archive', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    // Verify audition exists and belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Season not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Season belongs to a different club' });
+    }
+    
+    // Update audition seasonStatus
+    await db.collection('auditions').doc(id).update({
+      seasonStatus: 'archived',
+      archivedAt: new Date().toISOString(),
+      archivedBy: req.user.id || 'admin'
+    });
+    
+    // Update all club_members for this season
+    const membersSnapshot = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .where('seasonId', '==', id)
+      .get();
+    
+    const batch = db.batch();
+    let updateCount = 0;
+    
+    for (const memberDoc of membersSnapshot.docs) {
+      batch.update(memberDoc.ref, {
+        seasonStatus: 'archived',
+        archivedAt: new Date().toISOString()
+      });
+      updateCount++;
+    }
+    
+    await batch.commit();
+    
+    // Log audit event
+    await logAuditEvent('season_archived', {
+      seasonId: id,
+      seasonName: auditionData.name,
+      memberCount: updateCount
+    }, req.user.id, clubId, req);
+    
+    console.log(`✅ Archived season ${id} with ${updateCount} members`);
+    
+    res.json({
+      success: true,
+      message: `Season "${auditionData.name}" archived successfully`,
+      seasonId: id,
+      memberCount: updateCount
+    });
+  } catch (error) {
+    const errorContext = logErrorWithContext(error, req, {
+      operation: 'archive_season',
+      seasonId: id
+    });
+    res.status(500).json({
+      error: process.env.NODE_ENV === 'production'
+        ? 'Failed to archive season. Please try again.'
+        : error.message,
+      errorId: errorContext.timestamp
+    });
+  }
+});
+
+// Activate (unarchive) a season
+app.post('/api/seasons/:id/activate', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    // Verify audition exists and belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Season not found' });
+    }
+    
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied: Season belongs to a different club' });
+    }
+    
+    // Update audition seasonStatus
+    await db.collection('auditions').doc(id).update({
+      seasonStatus: 'active',
+      activatedAt: new Date().toISOString(),
+      activatedBy: req.user.id || 'admin'
+    });
+    
+    // Update all club_members for this season
+    const membersSnapshot = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .where('seasonId', '==', id)
+      .get();
+    
+    const batch = db.batch();
+    let updateCount = 0;
+    
+    for (const memberDoc of membersSnapshot.docs) {
+      batch.update(memberDoc.ref, {
+        seasonStatus: 'active'
+      });
+      updateCount++;
+    }
+    
+    await batch.commit();
+    
+    // Log audit event
+    await logAuditEvent('season_activated', {
+      seasonId: id,
+      seasonName: auditionData.name,
+      memberCount: updateCount
+    }, req.user.id, clubId, req);
+    
+    console.log(`✅ Activated season ${id} with ${updateCount} members`);
+    
+    res.json({
+      success: true,
+      message: `Season "${auditionData.name}" activated successfully`,
+      seasonId: id,
+      memberCount: updateCount
+    });
+  } catch (error) {
+    const errorContext = logErrorWithContext(error, req, {
+      operation: 'activate_season',
+      seasonId: id
+    });
+    res.status(500).json({
+      error: process.env.NODE_ENV === 'production'
+        ? 'Failed to activate season. Please try again.'
+        : error.message,
+      errorId: errorContext.timestamp
+    });
+  }
+});
+
 // Get dancers with scores (for results/audition pages)
 app.get('/api/dancers-with-scores', authenticateToken, async (req, res) => {
   try {
