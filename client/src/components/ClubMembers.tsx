@@ -382,48 +382,64 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
                       {season.seasonStatus === 'archived' ? 'ARCHIVED' : 'ACTIVE'}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {season.seasonStatus === 'archived' ? (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {season.seasonStatus === 'archived' ? (
+                        <button
+                          onClick={() => handleActivateSeason(season.id, season.name)}
+                          className="add-dancer-button"
+                          style={{
+                            padding: '0.5rem 1rem',
+                            fontSize: '0.85rem',
+                            backgroundColor: '#28a745',
+                            color: 'white',
+                            border: 'none',
+                            flex: 1
+                          }}
+                        >
+                          Activate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleArchiveSeason(season.id, season.name)}
+                          className="add-dancer-button"
+                          style={{
+                            padding: '0.5rem 1rem',
+                            fontSize: '0.85rem',
+                            backgroundColor: '#ffc107',
+                            color: '#333',
+                            border: 'none',
+                            flex: 1
+                          }}
+                        >
+                          Archive
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleActivateSeason(season.id, season.name)}
+                        onClick={() => setSelectedSeasonId(season.id)}
                         className="add-dancer-button"
                         style={{
                           padding: '0.5rem 1rem',
                           fontSize: '0.85rem',
-                          backgroundColor: '#28a745',
-                          color: 'white',
-                          border: 'none',
                           flex: 1
                         }}
                       >
-                        Activate
+                        View
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => handleArchiveSeason(season.id, season.name)}
-                        className="add-dancer-button"
-                        style={{
-                          padding: '0.5rem 1rem',
-                          fontSize: '0.85rem',
-                          backgroundColor: '#ffc107',
-                          color: '#333',
-                          border: 'none',
-                          flex: 1
-                        }}
-                      >
-                        Archive
-                      </button>
-                    )}
+                    </div>
                     <button
-                      onClick={() => setSelectedSeasonId(season.id)}
+                      onClick={() => handleDeleteSeason(season.id, season.name, season.memberCount)}
                       className="add-dancer-button"
                       style={{
                         padding: '0.5rem 1rem',
                         fontSize: '0.85rem',
-                        flex: 1
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        width: '100%'
                       }}
                     >
-                      View
+                      Delete Season Permanently
                     </button>
                   </div>
                 </div>
