@@ -52,6 +52,20 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
   // This ensures archived seasons never mix with active seasons
   const activeClubMembers = clubMembers.filter((m: any) => m.seasonStatus !== 'archived');
 
+  // Reset to active seasons when component mounts or clubMembers change
+  // This ensures archived seasons don't auto-open when tab is clicked
+  useEffect(() => {
+    if (selectedSeasonId !== 'all') {
+      const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
+      // If selected season is archived, reset to 'all' (active seasons only)
+      if (selectedSeason?.seasonStatus === 'archived') {
+        setSelectedSeasonId('all');
+        setIncludeArchived(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clubMembers.length]); // Reset when clubMembers change (e.g., when tab is opened)
+
   useEffect(() => {
     fetchSeasons();
   }, [includeArchived]);
