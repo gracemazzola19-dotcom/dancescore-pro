@@ -453,7 +453,8 @@ const AdminDashboard: React.FC = () => {
         }
       }
 
-      const response = await api.get('/api/club-members');
+      // By default, only fetch active seasons (archived seasons are excluded)
+      const response = await api.get('/api/club-members?includeArchived=false');
       const members = response.data || [];
       
       // Sort by level first (Level 1 to Level 4), then by average score within each level

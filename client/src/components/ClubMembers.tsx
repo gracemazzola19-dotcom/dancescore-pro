@@ -107,17 +107,63 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
   };
 
   // Filter members by selected season
+  // Archived seasons should NEVER show in "all" unless explicitly requested
   const filteredMembers = selectedSeasonId === 'all' 
-    ? clubMembers.filter(m => includeArchived || m.seasonStatus !== 'archived')
+    ? clubMembers.filter(m => m.seasonStatus !== 'archived') // Never show archived in "all" view
     : clubMembers.filter(m => (m.seasonId || m.auditionId) === selectedSeasonId);
+
+  // Check if currently viewing an archived season
+  const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
+  const isViewingArchivedSeason = selectedSeason?.seasonStatus === 'archived';
 
   return (
     <div className="admin-section">
+      {/* Archive Banner - Show when viewing archived season */}
+      {isViewingArchivedSeason && (
+        <div style={{
+          padding: '1rem',
+          backgroundColor: '#fff3cd',
+          border: '2px solid #ffc107',
+          borderRadius: '0.5rem',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            <h3 style={{ margin: 0, color: '#856404', fontSize: '1.1rem', fontWeight: '700' }}>
+              📦 ARCHIVED SEASON - {selectedSeason?.name || 'Unknown Season'}
+            </h3>
+            <p style={{ margin: '0.5rem 0 0 0', color: '#856404', fontSize: '0.9rem' }}>
+              This is an archived season. It is shown as a separate historical record and does not appear in the main club members view.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedSeasonId('all');
+              setIncludeArchived(false);
+            }}
+            className="add-dancer-button"
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none'
+            }}
+          >
+            Return to Active Seasons
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <h3 style={{ margin: 0 }}>Club Members Database</h3>
           <p style={{ color: '#666', margin: '0.5rem 0 0 0', fontSize: '1rem' }}>
-            All dancers who have completed auditions, sorted by highest score
+            {isViewingArchivedSeason 
+              ? `Archived season: ${selectedSeason?.name || 'Unknown'} - Historical records only`
+              : 'All dancers who have completed auditions, sorted by highest score'}
           </p>
         </div>
         <button
@@ -160,7 +206,7 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
             .map(season => (
               <option key={season.id} value={season.id}>
                 {season.name} ({season.memberCount} members)
-                {season.seasonStatus === 'archived' ? ' [Archived]' : ''}
+                {season.seasonStatus === 'archived' ? ' [Archived - Separate View]' : ''}
               </option>
             ))}
         </select>
