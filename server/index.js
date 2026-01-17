@@ -1853,6 +1853,13 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
     // Transfer dancers to club members collection with level assignments
     const transferredCount = dancers.length;
     
+    console.log(`\n🔄 Starting transfer of ${transferredCount} dancers to club_members...`);
+    console.log(`   Level assignments provided: ${Object.keys(levelAssignments || {}).length}`);
+    console.log(`   First 5 dancers: ${dancers.slice(0, 5).map(d => d.name).join(', ')}`);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
     for (const dancer of dancers) {
       const assignedLevel = levelAssignments[dancer.id] || 'Level 4';
       
