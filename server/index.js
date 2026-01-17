@@ -1923,9 +1923,22 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
       deliberationsCompletedBy: req.user.id || 'admin'
     });
     
+    // Save deliberations record to track this submission
+    await db.collection('deliberations').doc(id).set({
+      auditionId: id,
+      clubId: clubId,
+      levelAssignments: JSON.stringify(levelAssignments || {}),
+      dancersTransferred: transferredCount,
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user.id || 'admin',
+      submitted: true,
+      submittedAt: new Date().toISOString()
+    }, { merge: true });
+    
     console.log(`\n🎉 DELIBERATIONS SUBMISSION COMPLETE!`);
     console.log(`✅ Transferred ${transferredCount} dancers to club_members collection`);
     console.log(`✅ Audition ${id} status updated to 'completed'`);
+    console.log(`✅ Deliberations record saved`);
     console.log(`✅ All dancers have level assignments and scores\n`);
     
     // Log audit event
