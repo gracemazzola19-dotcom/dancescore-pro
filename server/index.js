@@ -652,6 +652,7 @@ app.get('/api/auditions', authenticateToken, async (req, res) => {
         name: auditionData.name,
         date: auditionData.date,
         status: auditionData.status || 'draft',
+        seasonStatus: auditionData.seasonStatus || 'active', // Season status
         judges: auditionData.judges || [],
         dancers: dancersSnapshot.size,
         createdAt: auditionData.createdAt?.toDate?.() || auditionData.createdAt
@@ -881,6 +882,7 @@ app.post('/api/auditions', authenticateToken, async (req, res) => {
       name,
       date,
       status: 'draft',
+      seasonStatus: 'active', // New: Season status (active/archived)
       judges: JSON.stringify(judges || []),
       clubId: clubId, // Multi-tenant: associate with user's club
       createdAt: new Date(),
@@ -1507,6 +1509,8 @@ app.post('/api/auditions/:id/add-previous-season-dancers', authenticateToken, as
           assignedLevel: String(assignedLevel),
           clubId: clubId,
           auditionId: String(id),
+          seasonId: String(id), // Season ID (same as auditionId)
+          seasonStatus: String(auditionData.seasonStatus || 'active'), // Season status (active/archived)
           auditionName: String(auditionData.name || ''),
           auditionDate: String(auditionData.date || ''),
           transferredAt: new Date().toISOString(),
@@ -1807,6 +1811,8 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
         assignedLevel: String(assignedLevel),
         clubId: clubId, // Multi-tenant: ensure clubId is set
         auditionId: String(id),
+        seasonId: String(id), // Season ID (same as auditionId)
+        seasonStatus: String(auditionData.seasonStatus || 'active'), // Season status (active/archived)
         auditionName: String(auditionData.name || ''),
         auditionDate: String(auditionData.date || ''),
         transferredAt: new Date().toISOString(),
@@ -4574,15 +4580,32 @@ app.put('/api/make-up-submissions/:id', authenticateToken, async (req, res) => {
 app.get('/api/club-members', authenticateToken, async (req, res) => {
   try {
     const clubId = getClubId(req);
+    const { seasonId, includeArchived } = req.query; // Optional filters
     
-    // Filter club members by clubId for multi-tenant isolation
-    const snapshot = await db.collection('club_members')
-      .where('clubId', '==', clubId)
-      .get();
+    // Build query - always filter by clubId
+    let query = db.collection('club_members').where('clubId', '==', clubId);
+    
+    // If seasonId is specified, filter by season
+    if (seasonId) {
+      query = query.where('seasonId', '==', seasonId);
+    }
+    
+    // By default, only show active seasons (unless includeArchived=true)
+    if (includeArchived !== 'true') {
+      // We'll filter in memory for seasonStatus since Firestore doesn't support multiple != filters well
+      // This is okay since we're filtering by clubId first
+    }
+    
+    const snapshot = await query.get();
     const members = [];
     
     for (const doc of snapshot.docs) {
       const memberData = doc.data();
+      
+      // Filter by seasonStatus if not including archived
+      if (includeArchived !== 'true' && memberData.seasonStatus === 'archived') {
+        continue;
+      }
       
       // Club members already have scores and averageScore stored when transferred
       // Just use the stored data
@@ -4595,6 +4618,8 @@ app.get('/api/club-members', authenticateToken, async (req, res) => {
         shirtSize: memberData.shirtSize || '',
         group: memberData.dancerGroup || 'Unassigned', // Use correct column name
         auditionId: memberData.auditionId,
+        seasonId: memberData.seasonId || memberData.auditionId, // Fallback for backwards compatibility
+        seasonStatus: memberData.seasonStatus || 'active', // Fallback for backwards compatibility
         auditionName: memberData.auditionName,
         auditionDate: memberData.auditionDate,
         averageScore: memberData.averageScore || 0,
