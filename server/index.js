@@ -1810,8 +1810,12 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
       });
     }
     
-    // Sort by audition number
-    dancers.sort((a, b) => a.auditionNumber - b.auditionNumber);
+    // Sort by audition number (handle both string and number formats)
+    dancers.sort((a, b) => {
+      const aNum = parseInt(a.auditionNumber) || 0;
+      const bNum = parseInt(b.auditionNumber) || 0;
+      return aNum - bNum;
+    });
     
     // Add rank based on average score
     const sortedByScore = [...dancers].sort((a, b) => b.averageScore - a.averageScore);
@@ -1889,9 +1893,21 @@ app.post('/api/auditions/:id/submit-deliberations', authenticateToken, async (re
       };
       
       // Create club member record with level assignment using database adapter
-      const memberRef = await db.collection('club_members').add(clubMemberData);
-      console.log(`   ✅ Transferred ${dancer.name} (#${dancer.auditionNumber}) to club_members - Level: ${assignedLevel}, Score: ${averageScore.toFixed(2)}`);
+      try {
+        const memberRef = await db.collection('club_members').add(clubMemberData);
+        successCount++;
+        console.log(`   ✅ [${successCount}/${transferredCount}] Transferred ${dancer.name} (#${dancer.auditionNumber}) to club_members - Level: ${assignedLevel}, Score: ${averageScore.toFixed(2)}, ID: ${memberRef.id}`);
+      } catch (error) {
+        errorCount++;
+        console.error(`   ❌ [ERROR ${errorCount}] Failed to transfer ${dancer.name}:`, error);
+        console.error(`   Error details:`, error.message, error.stack);
+      }
     }
+    
+    console.log(`\n📊 Transfer Summary:`);
+    console.log(`   ✅ Successfully transferred: ${successCount}`);
+    console.log(`   ❌ Errors: ${errorCount}`);
+    console.log(`   📝 Total attempted: ${transferredCount}`);
     
     // Update audition status to completed
     await db.collection('auditions').doc(id).update({

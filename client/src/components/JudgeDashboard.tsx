@@ -221,11 +221,12 @@ const JudgeDashboard: React.FC = () => {
         if (isNaN(bNum)) return -1;
         return aNum - bNum;
       });
-    setCurrentDancers(groupDancers.slice(0, 5)); // Limit to 5 dancers
+    // Show ALL dancers in the selected group (removed 5 dancer limit)
+    setCurrentDancers(groupDancers);
     
-    // Fetch submission status for each dancer
+    // Fetch submission status for all dancers in the group
     if (groupDancers.length > 0) {
-      fetchSubmissionStatus(groupDancers.slice(0, 5));
+      fetchSubmissionStatus(groupDancers);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dancers, selectedGroup]);
