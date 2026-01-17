@@ -185,13 +185,28 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
               : 'All dancers who have completed auditions, sorted by highest score'}
           </p>
         </div>
-        <button
-          onClick={() => setShowSeasonManagement(!showSeasonManagement)}
-          className="add-dancer-button"
-          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-        >
-          {showSeasonManagement ? 'Hide' : 'Manage'} Seasons
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={handleDeleteAllClubMembers}
+            className="add-dancer-button"
+            style={{ 
+              padding: '0.5rem 1rem', 
+              fontSize: '0.9rem',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none'
+            }}
+          >
+            Delete All
+          </button>
+          <button
+            onClick={() => setShowSeasonManagement(!showSeasonManagement)}
+            className="add-dancer-button"
+            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+          >
+            {showSeasonManagement ? 'Hide' : 'Manage'} Seasons
+          </button>
+        </div>
       </div>
 
       {/* Season Filter */}
