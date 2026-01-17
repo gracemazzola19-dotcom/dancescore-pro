@@ -1,0 +1,3 @@
+# Render Deployment Trigger File
+# This file helps ensure Render detects repository changes
+# Last updated: $(date)
