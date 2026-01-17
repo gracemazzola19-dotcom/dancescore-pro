@@ -1976,8 +1976,8 @@ app.delete('/api/auditions/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Audition belongs to a different club' });
     }
     
-    // Delete associated data (dancers and scores linked to this audition) filtered by clubId
-    // Get all dancers for this audition
+    // Delete associated data (dancers, scores, and club_members linked to this audition) filtered by clubId
+    // Get all dancers for this audition (from dancers collection)
     const dancersSnapshot = await db.collection('dancers')
       .where('clubId', '==', clubId)
       .where('auditionId', '==', id)
@@ -1989,8 +1989,16 @@ app.delete('/api/auditions/:id', authenticateToken, async (req, res) => {
       .where('auditionId', '==', id)
       .get();
     
-    // Delete scores in batches (Firestore batch limit is 500)
-    const allDocsToDelete = [...scoresSnapshot.docs, ...dancersSnapshot.docs];
+    // Get all club_members for this audition (from club_members collection - the dancer database)
+    const clubMembersSnapshot = await db.collection('club_members')
+      .where('clubId', '==', clubId)
+      .where('auditionId', '==', id)
+      .get();
+    
+    console.log(`   Found ${dancersSnapshot.size} dancers, ${scoresSnapshot.size} scores, and ${clubMembersSnapshot.size} club members to delete`);
+    
+    // Delete scores, dancers, and club_members in batches (Firestore batch limit is 500)
+    const allDocsToDelete = [...scoresSnapshot.docs, ...dancersSnapshot.docs, ...clubMembersSnapshot.docs];
     
     if (allDocsToDelete.length > 0) {
       // Delete in batches of 500 (Firestore limit)
@@ -2008,20 +2016,22 @@ app.delete('/api/auditions/:id', authenticateToken, async (req, res) => {
     await db.collection('auditions').doc(id).delete();
     
     console.log(`✅ Audition ${id} deleted successfully by ${req.user.id}`);
-    console.log(`   Deleted ${dancersSnapshot.size} dancers and ${scoresSnapshot.size} scores`);
+    console.log(`   Deleted ${dancersSnapshot.size} dancers, ${scoresSnapshot.size} scores, and ${clubMembersSnapshot.size} club members`);
     
     // Log audit event
     await logAuditEvent('audition_deleted', {
       auditionId: id,
       auditionName: auditionData.name || 'Unknown',
       deletedDancers: dancersSnapshot.size,
-      deletedScores: scoresSnapshot.size
+      deletedScores: scoresSnapshot.size,
+      deletedClubMembers: clubMembersSnapshot.size
     }, req.user.id, clubId, req);
     
     res.json({ 
       message: 'Audition deleted successfully',
       deletedDancers: dancersSnapshot.size,
-      deletedScores: scoresSnapshot.size
+      deletedScores: scoresSnapshot.size,
+      deletedClubMembers: clubMembersSnapshot.size
     });
   } catch (error) {
     const errorContext = logErrorWithContext(error, req, { 
