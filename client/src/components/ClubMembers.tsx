@@ -114,6 +114,40 @@ const ClubMembers: React.FC<ClubMembersProps> = ({ clubMembers, onDeleteMember, 
     }
   };
 
+  const handleDeleteSeason = async (seasonId: string, seasonName: string, memberCount: number) => {
+    const confirmed = window.confirm(
+      `⚠️ PERMANENTLY DELETE SEASON\n\n` +
+      `Season: "${seasonName}"\n` +
+      `Members: ${memberCount}\n\n` +
+      `This will PERMANENTLY delete:\n` +
+      `- The audition/season record\n` +
+      `- All ${memberCount} club members for this season\n` +
+      `- All dancers from this audition\n` +
+      `- All scores from this audition\n\n` +
+      `This action CANNOT be undone!\n\n` +
+      `Are you absolutely sure?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/auditions/${seasonId}`);
+      toast.success(`Season "${seasonName}" permanently deleted`);
+      fetchSeasons();
+      // Clear cache to remove stale data
+      localStorage.removeItem('clubMembers');
+      localStorage.removeItem('clubMembers_time');
+      // Refresh the page to show updated state
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error deleting season:', error);
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to delete season';
+      toast.error(errorMsg);
+    }
+  };
+
   const handleDeleteAllClubMembers = async () => {
     const memberCount = clubMembers.length;
     if (memberCount === 0) {
