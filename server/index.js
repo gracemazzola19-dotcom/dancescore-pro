@@ -3164,15 +3164,23 @@ app.get('/api/auditions/:id/form-responses', authenticateToken, async (req, res)
       }
     }
     
+    // Fetch responses - don't use orderBy if we might not have an index
+    // We'll sort in memory instead
     const responsesSnapshot = await db.collection('form_responses')
       .where('auditionId', '==', id)
-      .orderBy('submittedAt', 'desc')
       .get();
     
     const responses = responsesSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+    
+    // Sort by submittedAt in memory (descending - newest first)
+    responses.sort((a, b) => {
+      const dateA = new Date(a.submittedAt || a.proof?.timestamp || 0).getTime();
+      const dateB = new Date(b.submittedAt || b.proof?.timestamp || 0).getTime();
+      return dateB - dateA; // Descending order
+    });
     
     res.json(responses);
   } catch (error) {
