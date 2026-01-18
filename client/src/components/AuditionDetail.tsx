@@ -181,6 +181,8 @@ const AuditionDetail: React.FC = () => {
       }
       
       if (editingQuestion) {
+        // Update existing question - add questionId to FormData
+        formData.append('questionId', editingQuestion.id);
         // Update existing question - image is optional
         if (questionImageFile) {
           formData.append('image', questionImageFile);
@@ -189,8 +191,7 @@ const AuditionDetail: React.FC = () => {
         await api.post(`/api/auditions/${id}/form-questions`, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
-          },
-          params: { questionId: editingQuestion.id }
+          }
         });
         toast.success('Question updated successfully');
       } else {
