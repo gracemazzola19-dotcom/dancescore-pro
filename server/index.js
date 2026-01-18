@@ -3746,7 +3746,14 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      name: error.name
+    });
+    const errorMessage = error.message || error.toString() || 'An unexpected error occurred during login';
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -6574,37 +6581,37 @@ app.post('/api/scores', authenticateToken, async (req, res) => {
           throw new Error('Dancer not found');
         }
         
-        const scoreData = {
-          dancerId,
+    const scoreData = {
+      dancerId,
           auditionId: finalAuditionId,
           clubId: clubId,
-          judgeId: req.user.id,
-          judgeName: req.user.name || req.user.email || req.user.id,
-          scores: {
-            kick: scores.kick || 0,
-            jump: scores.jump || 0,
-            turn: scores.turn || 0,
-            performance: scores.performance || 0,
-            execution: scores.execution || 0,
-            technique: scores.technique || 0
-          },
-          comments: comments || '',
-          submitted: true,
+      judgeId: req.user.id,
+      judgeName: req.user.name || req.user.email || req.user.id,
+      scores: {
+        kick: scores.kick || 0,
+        jump: scores.jump || 0,
+        turn: scores.turn || 0,
+        performance: scores.performance || 0,
+        execution: scores.execution || 0,
+        technique: scores.technique || 0
+      },
+      comments: comments || '',
+      submitted: true,
           submittedAt: new Date(),
-          timestamp: new Date()
-        };
+      timestamp: new Date()
+    };
         
         let scoreRef;
         let isNewScore = false;
-        
-        if (!existingScoresSnapshot.empty) {
-          // Update existing draft score
-          const existingDoc = existingScoresSnapshot.docs[0];
+    
+    if (!existingScoresSnapshot.empty) {
+      // Update existing draft score
+      const existingDoc = existingScoresSnapshot.docs[0];
           scoreRef = existingDoc.ref;
           transaction.update(scoreRef, scoreData);
-          console.log(`Score updated with ID: ${existingDoc.id}`);
-        } else {
-          // Create new score
+      console.log(`Score updated with ID: ${existingDoc.id}`);
+    } else {
+      // Create new score
           scoreRef = db.collection('scores').doc();
           transaction.set(scoreRef, scoreData);
           isNewScore = true;
@@ -6747,7 +6754,7 @@ app.put('/api/scores/draft/:dancerId', authenticateToken, async (req, res) => {
       await db.collection('dancers').doc(dancerId).update({
         scores: admin.firestore.FieldValue.arrayUnion(docRef.id)
       });
-      
+
       return res.json({ id: docRef.id, ...scoreData, message: 'Draft saved' });
     }
   } catch (error) {
