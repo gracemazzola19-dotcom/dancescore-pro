@@ -69,6 +69,18 @@ const AuditionDetail: React.FC = () => {
   const [expandedAnalytics, setExpandedAnalytics] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'dancers' | 'videos'>('dancers');
   
+  // Form questions management
+  const [showFormQuestions, setShowFormQuestions] = useState(false);
+  const [formQuestions, setFormQuestions] = useState<any[]>([]);
+  const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
+  const [questionForm, setQuestionForm] = useState({
+    text: '',
+    type: 'text' as 'text' | 'yesno' | 'multiplechoice' | 'consent',
+    required: false,
+    options: ''
+  });
+  const [questionImageFile, setQuestionImageFile] = useState<File | null>(null);
+  
   // New dancer form state
   const [newDancer, setNewDancer] = useState({
     name: '',
@@ -86,8 +98,11 @@ const AuditionDetail: React.FC = () => {
     fetchAuditionDetails();
     fetchDancers();
     fetchVideos();
+    if (showFormQuestions) {
+      fetchFormQuestions();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, showFormQuestions]);
 
   const fetchAuditionDetails = async () => {
     try {
@@ -109,6 +124,124 @@ const AuditionDetail: React.FC = () => {
       setDancers(sortedDancers);
     } catch (error) {
       console.error('Error fetching dancers:', error);
+    }
+  };
+
+  const fetchFormQuestions = async () => {
+    if (!id) return;
+    try {
+      const response = await api.get(`/api/auditions/${id}/form-questions/admin`);
+      setFormQuestions(response.data || []);
+    } catch (error) {
+      console.error('Error fetching form questions:', error);
+    }
+  };
+
+  const handleAddQuestion = () => {
+    setEditingQuestion(null);
+    setQuestionForm({
+      text: '',
+      type: 'text',
+      required: false,
+      options: ''
+    });
+    setQuestionImageFile(null);
+  };
+
+  const handleEditQuestion = (question: any) => {
+    setEditingQuestion(question);
+    setQuestionForm({
+      text: question.text || '',
+      type: question.type || 'text',
+      required: question.required || false,
+      options: question.options ? (Array.isArray(question.options) ? question.options.join('\n') : '') : ''
+    });
+  };
+
+  const handleSaveQuestion = async () => {
+    if (!questionForm.text.trim()) {
+      toast.error('Question text is required');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('text', questionForm.text);
+      formData.append('type', questionForm.type);
+      formData.append('required', String(questionForm.required));
+      
+      const maxOrder = formQuestions.length > 0 
+        ? Math.max(...formQuestions.map(q => q.order || 0))
+        : -1;
+      formData.append('order', String(maxOrder + 1));
+      
+      if (questionForm.type === 'multiplechoice' && questionForm.options) {
+        const options = questionForm.options.split('\n').filter(o => o.trim());
+        formData.append('options', JSON.stringify(options));
+      }
+      
+      if (editingQuestion) {
+        // Update existing question - image is optional
+        if (questionImageFile) {
+          formData.append('image', questionImageFile);
+        }
+        
+        await api.post(`/api/auditions/${id}/form-questions`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          params: { questionId: editingQuestion.id }
+        });
+        toast.success('Question updated successfully');
+      } else {
+        // Create new question
+        if (questionImageFile) {
+          formData.append('image', questionImageFile);
+        }
+        
+        await api.post(`/api/auditions/${id}/form-questions`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          }
+        });
+        toast.success('Question added successfully');
+      }
+      
+      // Reset form
+      setEditingQuestion(null);
+      setQuestionForm({ text: '', type: 'text', required: false, options: '' });
+      setQuestionImageFile(null);
+      fetchFormQuestions();
+    } catch (error: any) {
+      console.error('Error saving question:', error);
+      toast.error(error.response?.data?.error || 'Failed to save question');
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    if (!window.confirm('Are you sure you want to delete this question?')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/form-questions/${questionId}`);
+      toast.success('Question deleted successfully');
+      fetchFormQuestions();
+    } catch (error: any) {
+      console.error('Error deleting question:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete question');
+    }
+  };
+
+  const handleReorderQuestions = async (newOrder: string[]) => {
+    try {
+      await api.post(`/api/auditions/${id}/form-questions/reorder`, {
+        questionIds: newOrder
+      });
+      fetchFormQuestions();
+    } catch (error: any) {
+      console.error('Error reordering questions:', error);
+      toast.error('Failed to reorder questions');
     }
   };
 
@@ -623,6 +756,274 @@ const AuditionDetail: React.FC = () => {
                         {registrationUrl}
                       </p>
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Form Questions Management */}
+              <div className="admin-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3>Registration Form Questions</h3>
+                  <button
+                    className="add-dancer-button"
+                    onClick={() => {
+                      setShowFormQuestions(!showFormQuestions);
+                      if (!showFormQuestions) {
+                        fetchFormQuestions();
+                      }
+                    }}
+                  >
+                    {showFormQuestions ? 'Hide Questions' : 'Manage Questions'}
+                  </button>
+                </div>
+
+                {showFormQuestions && (
+                  <div>
+                    {/* Add/Edit Question Form */}
+                    {(editingQuestion !== null || formQuestions.length === 0) && (
+                      <div style={{
+                        padding: '1.5rem',
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: '0.5rem',
+                        marginBottom: '1.5rem',
+                        border: '2px solid #667eea'
+                      }}>
+                        <h4 style={{ marginTop: 0, marginBottom: '1rem', color: '#333' }}>
+                          {editingQuestion ? 'Edit Question' : 'Add New Question'}
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+                              Question Text <span style={{ color: '#dc3545' }}>*</span>
+                            </label>
+                            <textarea
+                              value={questionForm.text}
+                              onChange={(e) => setQuestionForm({ ...questionForm, text: e.target.value })}
+                              placeholder="Enter your question..."
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '2px solid #dee2e6',
+                                borderRadius: '0.5rem',
+                                fontSize: '1rem',
+                                minHeight: '80px',
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+                              Question Type
+                            </label>
+                            <select
+                              value={questionForm.type}
+                              onChange={(e) => setQuestionForm({ ...questionForm, type: e.target.value as any })}
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                border: '2px solid #dee2e6',
+                                borderRadius: '0.5rem',
+                                fontSize: '1rem',
+                                boxSizing: 'border-box'
+                              }}
+                            >
+                              <option value="text">Text Input</option>
+                              <option value="yesno">Yes/No</option>
+                              <option value="multiplechoice">Multiple Choice</option>
+                              <option value="consent">Consent Checkbox</option>
+                            </select>
+                          </div>
+
+                          {questionForm.type === 'multiplechoice' && (
+                            <div>
+                              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+                                Options (one per line)
+                              </label>
+                              <textarea
+                                value={questionForm.options}
+                                onChange={(e) => setQuestionForm({ ...questionForm, options: e.target.value })}
+                                placeholder="Option 1&#10;Option 2&#10;Option 3"
+                                style={{
+                                  width: '100%',
+                                  padding: '0.75rem',
+                                  border: '2px solid #dee2e6',
+                                  borderRadius: '0.5rem',
+                                  fontSize: '1rem',
+                                  minHeight: '100px',
+                                  boxSizing: 'border-box'
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={questionForm.required}
+                                onChange={(e) => setQuestionForm({ ...questionForm, required: e.target.checked })}
+                                style={{ width: '1.25rem', height: '1.25rem' }}
+                              />
+                              <span>Required</span>
+                            </label>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+                              Question Image (Optional)
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => setQuestionImageFile(e.target.files?.[0] || null)}
+                              style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                border: '2px solid #dee2e6',
+                                borderRadius: '0.5rem',
+                                fontSize: '0.9rem'
+                              }}
+                            />
+                            {editingQuestion?.imageUrl && !questionImageFile && (
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <img 
+                                  src={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}${editingQuestion.imageUrl}`}
+                                  alt="Current question image"
+                                  style={{ maxWidth: '200px', maxHeight: '200px', borderRadius: '0.5rem' }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button
+                              type="button"
+                              onClick={handleSaveQuestion}
+                              className="add-dancer-button"
+                              style={{ flex: 1 }}
+                            >
+                              {editingQuestion ? 'Update Question' : 'Add Question'}
+                            </button>
+                            {editingQuestion && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingQuestion(null);
+                                  setQuestionForm({ text: '', type: 'text', required: false, options: '' });
+                                  setQuestionImageFile(null);
+                                }}
+                                className="add-dancer-button"
+                                style={{ backgroundColor: '#6c757d' }}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Existing Questions List */}
+                    {formQuestions.length > 0 && (
+                      <div>
+                        <h4 style={{ marginBottom: '1rem', color: '#333' }}>Current Questions ({formQuestions.length})</h4>
+                        {formQuestions.map((question, index) => (
+                          <div
+                            key={question.id}
+                            style={{
+                              padding: '1rem',
+                              backgroundColor: '#fff',
+                              border: '2px solid #dee2e6',
+                              borderRadius: '0.5rem',
+                              marginBottom: '0.75rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                  <span style={{ color: '#667eea', fontWeight: '600' }}>#{index + 1}</span>
+                                  <span style={{
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: question.required ? '#dc3545' : '#6c757d',
+                                    color: 'white',
+                                    borderRadius: '0.25rem',
+                                    fontSize: '0.75rem'
+                                  }}>
+                                    {question.required ? 'Required' : 'Optional'}
+                                  </span>
+                                  <span style={{
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: '#667eea',
+                                    color: 'white',
+                                    borderRadius: '0.25rem',
+                                    fontSize: '0.75rem'
+                                  }}>
+                                    {question.type}
+                                  </span>
+                                </div>
+                                <p style={{ margin: '0.5rem 0', fontSize: '1rem', fontWeight: '500' }}>
+                                  {question.text}
+                                </p>
+                                {question.imageUrl && (
+                                  <div style={{ marginTop: '0.75rem' }}>
+                                    <img
+                                      src={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}${question.imageUrl}`}
+                                      alt={question.text}
+                                      style={{
+                                        maxWidth: '200px',
+                                        maxHeight: '200px',
+                                        borderRadius: '0.5rem',
+                                        border: '1px solid #dee2e6'
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                                {question.options && question.options.length > 0 && (
+                                  <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
+                                    Options: {question.options.join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
+                                <button
+                                  onClick={() => handleEditQuestion(question)}
+                                  className="add-dancer-button"
+                                  style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteQuestion(question.id)}
+                                  className="add-dancer-button"
+                                  style={{
+                                    padding: '0.5rem 1rem',
+                                    fontSize: '0.85rem',
+                                    backgroundColor: '#dc3545'
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {formQuestions.length === 0 && !editingQuestion && (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                        <p>No questions added yet. Click "Add New Question" to get started.</p>
+                        <button
+                          onClick={handleAddQuestion}
+                          className="add-dancer-button"
+                          style={{ marginTop: '1rem' }}
+                        >
+                          Add First Question
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

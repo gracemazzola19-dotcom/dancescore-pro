@@ -3,6 +3,16 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 
+interface FormQuestion {
+  id: string;
+  text: string;
+  type: 'text' | 'yesno' | 'multiplechoice' | 'consent';
+  required: boolean;
+  order: number;
+  options?: string[];
+  imageUrl?: string;
+}
+
 const DancerRegistration: React.FC = () => {
   const { auditionId } = useParams<{ auditionId?: string }>();
   const [auditionName, setAuditionName] = useState<string>('');
@@ -16,7 +26,10 @@ const DancerRegistration: React.FC = () => {
     previousMember: '',
     previousLevel: ''
   });
+  const [formQuestions, setFormQuestions] = useState<FormQuestion[]>([]);
+  const [questionResponses, setQuestionResponses] = useState<{ [questionId: string]: string | boolean }>({});
   const [loading, setLoading] = useState(false);
+  const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [success, setSuccess] = useState(false);
   const [registeredInfo, setRegisteredInfo] = useState<any>(null);
 
@@ -35,9 +48,12 @@ const DancerRegistration: React.FC = () => {
     };
     fetchClubName();
     
-    // Fetch audition name if auditionId is provided
+    // Fetch audition name and form questions if auditionId is provided
     if (auditionId) {
       fetchAuditionName();
+      fetchFormQuestions();
+    } else {
+      setLoadingQuestions(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditionId]);
@@ -50,6 +66,32 @@ const DancerRegistration: React.FC = () => {
       setAuditionName(response.data.name);
     } catch (error) {
       console.error('Error fetching audition name:', error);
+    }
+  };
+
+  const fetchFormQuestions = async () => {
+    if (!auditionId) return;
+    
+    try {
+      setLoadingQuestions(true);
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auditions/${auditionId}/form-questions`
+      );
+      const questions = response.data || [];
+      setFormQuestions(questions.sort((a: FormQuestion, b: FormQuestion) => a.order - b.order));
+      
+      // Initialize responses for consent questions
+      const initialResponses: { [key: string]: boolean } = {};
+      questions.forEach((q: FormQuestion) => {
+        if (q.type === 'consent' || q.type === 'yesno') {
+          initialResponses[q.id] = false;
+        }
+      });
+      setQuestionResponses(initialResponses);
+    } catch (error) {
+      console.error('Error fetching form questions:', error);
+    } finally {
+      setLoadingQuestions(false);
     }
   };
 
@@ -68,13 +110,24 @@ const DancerRegistration: React.FC = () => {
       return;
     }
 
+    // Validate required form questions
+    const missingQuestions = formQuestions
+      .filter(q => q.required && !questionResponses[q.id] && questionResponses[q.id] !== true)
+      .map(q => q.text);
+    
+    if (missingQuestions.length > 0) {
+      toast.error(`Please answer all required questions: ${missingQuestions.join(', ')}`);
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await axios.post(
         `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/register`,
         {
           ...formData,
-          auditionId: auditionId || null
+          auditionId: auditionId || null,
+          formResponses: questionResponses // Include question responses for proof
         }
       );
       
@@ -305,6 +358,143 @@ const DancerRegistration: React.FC = () => {
                 <option value="Level 3">Level 3</option>
                 <option value="Level 4">Level 4</option>
               </select>
+            </div>
+          )}
+
+          {/* Dynamic Form Questions */}
+          {loadingQuestions ? (
+            <div style={{ textAlign: 'center', padding: '1rem', color: '#666' }}>
+              Loading questions...
+            </div>
+          ) : formQuestions.length > 0 && (
+            <div style={{ marginTop: '2rem', borderTop: '2px solid #dee2e6', paddingTop: '2rem' }}>
+              <h3 style={{ color: '#6b5b95', marginBottom: '1.5rem', fontSize: '1.3rem' }}>
+                Additional Information
+              </h3>
+              
+              {formQuestions.map((question) => (
+                <div key={question.id} style={{ marginBottom: '2rem' }}>
+                  <label className="form-label">
+                    {question.text}
+                    {question.required && <span style={{ color: '#dc3545' }}> *</span>}
+                  </label>
+                  
+                  {/* Display question image if present */}
+                  {question.imageUrl && (
+                    <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                      <img 
+                        src={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}${question.imageUrl}`}
+                        alt={question.text}
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '400px',
+                          borderRadius: '0.5rem',
+                          border: '1px solid #dee2e6'
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Render based on question type */}
+                  {question.type === 'text' && (
+                    <input
+                      type="text"
+                      value={questionResponses[question.id] as string || ''}
+                      onChange={(e) => setQuestionResponses({
+                        ...questionResponses,
+                        [question.id]: e.target.value
+                      })}
+                      placeholder="Enter your answer"
+                      required={question.required}
+                      className="form-input"
+                    />
+                  )}
+                  
+                  {question.type === 'yesno' && (
+                    <select
+                      value={questionResponses[question.id] as string || ''}
+                      onChange={(e) => setQuestionResponses({
+                        ...questionResponses,
+                        [question.id]: e.target.value
+                      })}
+                      required={question.required}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '2px solid #dee2e6',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem',
+                        boxSizing: 'border-box',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="">Select an option</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  )}
+                  
+                  {question.type === 'multiplechoice' && question.options && (
+                    <select
+                      value={questionResponses[question.id] as string || ''}
+                      onChange={(e) => setQuestionResponses({
+                        ...questionResponses,
+                        [question.id]: e.target.value
+                      })}
+                      required={question.required}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '2px solid #dee2e6',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem',
+                        boxSizing: 'border-box',
+                        backgroundColor: 'white'
+                      }}
+                    >
+                      <option value="">Select an option</option>
+                      {question.options.map((option, idx) => (
+                        <option key={idx} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  )}
+                  
+                  {question.type === 'consent' && (
+                    <div style={{
+                      padding: '1rem',
+                      backgroundColor: '#f8f9fa',
+                      borderRadius: '0.5rem',
+                      border: '2px solid #dee2e6'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        cursor: 'pointer',
+                        gap: '0.75rem'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={questionResponses[question.id] === true}
+                          onChange={(e) => setQuestionResponses({
+                            ...questionResponses,
+                            [question.id]: e.target.checked
+                          })}
+                          required={question.required}
+                          style={{
+                            marginTop: '0.25rem',
+                            width: '1.25rem',
+                            height: '1.25rem',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <span style={{ fontSize: '0.95rem', color: '#495057', lineHeight: '1.5' }}>
+                          I acknowledge that I have read and agree to the terms above.
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 

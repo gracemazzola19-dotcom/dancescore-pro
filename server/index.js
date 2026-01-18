@@ -110,6 +110,38 @@ const videoUpload = multer({
   }
 });
 
+// Configure multer for form question image uploads
+const questionImageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const fs = require('fs');
+    const dir = 'uploads/question-images/';
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = file.originalname.split('.').pop() || 'jpg';
+    cb(null, `question-${uniqueSuffix}.${ext}`);
+  }
+});
+
+const questionImageUpload = multer({
+  storage: questionImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB max file size
+  },
+  fileFilter: function (req, file, cb) {
+    // Accept image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
+
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -2778,7 +2810,7 @@ app.get('/api/auditions/:id/public', async (req, res) => {
 // Public dancer registration (NO authentication required)
 app.post('/api/register', async (req, res) => {
   try {
-    const { name, auditionNumber, email, phone, shirtSize, auditionId, previousMember, previousLevel } = req.body;
+    const { name, auditionNumber, email, phone, shirtSize, auditionId, previousMember, previousLevel, formResponses } = req.body;
     
     console.log('Public registration request:', { name, auditionNumber, email, phone, shirtSize, auditionId, previousMember, previousLevel });
     
@@ -2851,15 +2883,302 @@ app.post('/api/register', async (req, res) => {
     };
     
     const docRef = await db.collection('dancers').add(dancerData);
-    console.log(`Dancer self-registered with ID: ${docRef.id}, assigned to ${autoGroup}, audition: ${auditionId || 'none'}`);
+    const dancerId = docRef.id;
+    console.log(`Dancer self-registered with ID: ${dancerId}, assigned to ${autoGroup}, audition: ${auditionId || 'none'}`);
+    
+    // Save form responses with proof (for consent forms, etc.)
+    if (formResponses && Object.keys(formResponses).length > 0) {
+      const clientIp = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+      const userAgent = req.headers['user-agent'] || 'unknown';
+      
+      const responseData = {
+        dancerId: dancerId,
+        dancerName: name,
+        auditionId: auditionId || null,
+        clubId: clubId,
+        responses: formResponses, // Object mapping questionId -> answer
+        submittedAt: new Date().toISOString(),
+        ipAddress: clientIp,
+        userAgent: userAgent,
+        proof: {
+          timestamp: new Date().toISOString(),
+          ip: clientIp,
+          userAgent: userAgent,
+          submissionId: `submission-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        }
+      };
+      
+      await db.collection('form_responses').add(responseData);
+      console.log(`   📝 Form responses saved for dancer ${dancerId} with proof`);
+    }
     
     res.json({ 
       message: 'Registration successful! You have been added to the audition list.',
-      dancer: { id: docRef.id, ...dancerData }
+      dancer: { id: dancerId, ...dancerData }
     });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed. Please see staff for assistance.' });
+  }
+});
+
+// ============================================================================
+// FORM QUESTION MANAGEMENT (For Registration Forms)
+// ============================================================================
+
+// Get form questions for an audition (public - no auth required)
+app.get('/api/auditions/:id/form-questions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const questionsSnapshot = await db.collection('form_questions')
+      .where('auditionId', '==', id)
+      .orderBy('order', 'asc')
+      .get();
+    
+    const questions = questionsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json(questions);
+  } catch (error) {
+    console.error('Error fetching form questions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get form questions for an audition (admin - authenticated)
+app.get('/api/auditions/:id/form-questions/admin', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    // Verify audition belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (auditionDoc.exists) {
+      const auditionData = auditionDoc.data();
+      if (auditionData.clubId && auditionData.clubId !== clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    
+    const questionsSnapshot = await db.collection('form_questions')
+      .where('auditionId', '==', id)
+      .orderBy('order', 'asc')
+      .get();
+    
+    const questions = questionsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json(questions);
+  } catch (error) {
+    console.error('Error fetching form questions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create or update form question (admin)
+app.post('/api/auditions/:id/form-questions', authenticateToken, questionImageUpload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    const { questionId, text, type, required, order, options } = req.body;
+    
+    // Verify audition belongs to user's club
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (!auditionDoc.exists) {
+      return res.status(404).json({ error: 'Audition not found' });
+    }
+    const auditionData = auditionDoc.data();
+    if (auditionData.clubId && auditionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const questionData = {
+      auditionId: id,
+      clubId: clubId,
+      text: String(text || ''),
+      type: String(type || 'text'), // text, yesno, multiplechoice, consent
+      required: required === 'true' || required === true,
+      order: parseInt(order || '0'),
+      options: options ? (typeof options === 'string' ? JSON.parse(options) : options) : [],
+      imageUrl: null,
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user.id
+    };
+    
+    // Handle image upload if present
+    if (req.file) {
+      questionData.imageUrl = `/uploads/question-images/${req.file.filename}`;
+      questionData.imagePath = req.file.path;
+      questionData.imageOriginalName = req.file.originalname;
+    } else if (questionId) {
+      // If updating and no new image, keep existing image
+      const existingQuestion = await db.collection('form_questions').doc(questionId).get();
+      if (existingQuestion.exists) {
+        const existingData = existingQuestion.data();
+        questionData.imageUrl = existingData.imageUrl || null;
+        questionData.imagePath = existingData.imagePath || null;
+        questionData.imageOriginalName = existingData.imageOriginalName || null;
+      }
+    }
+    
+    if (questionId) {
+      // Update existing question
+      await db.collection('form_questions').doc(questionId).update(questionData);
+      res.json({ id: questionId, ...questionData, message: 'Question updated successfully' });
+    } else {
+      // Create new question
+      questionData.createdAt = new Date().toISOString();
+      const docRef = await db.collection('form_questions').add(questionData);
+      res.json({ id: docRef.id, ...questionData, message: 'Question created successfully' });
+    }
+  } catch (error) {
+    console.error('Error saving form question:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete form question (admin)
+app.delete('/api/form-questions/:questionId', authenticateToken, async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    const clubId = getClubId(req);
+    
+    const questionDoc = await db.collection('form_questions').doc(questionId).get();
+    if (!questionDoc.exists) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+    
+    const questionData = questionDoc.data();
+    if (questionData.clubId !== clubId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Delete image file if exists
+    if (questionData.imagePath) {
+      const fs = require('fs');
+      const path = require('path');
+      const imagePath = path.isAbsolute(questionData.imagePath)
+        ? questionData.imagePath
+        : path.join(__dirname, questionData.imagePath);
+      
+      if (fs.existsSync(imagePath)) {
+        try {
+          fs.unlinkSync(imagePath);
+        } catch (fileError) {
+          console.error('Error deleting question image:', fileError);
+        }
+      }
+    }
+    
+    await db.collection('form_questions').doc(questionId).delete();
+    res.json({ message: 'Question deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting form question:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update question order (admin)
+app.post('/api/auditions/:id/form-questions/reorder', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    const { questionIds } = req.body; // Array of question IDs in new order
+    
+    if (!Array.isArray(questionIds)) {
+      return res.status(400).json({ error: 'questionIds must be an array' });
+    }
+    
+    // Verify audition
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (auditionDoc.exists) {
+      const auditionData = auditionDoc.data();
+      if (auditionData.clubId && auditionData.clubId !== clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    
+    // Update order for each question
+    const batch = db.batch();
+    questionIds.forEach((questionId, index) => {
+      const questionRef = db.collection('form_questions').doc(questionId);
+      batch.update(questionRef, { order: index });
+    });
+    
+    await batch.commit();
+    res.json({ message: 'Question order updated successfully' });
+  } catch (error) {
+    console.error('Error reordering questions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// FORM RESPONSE STORAGE (Proof of Submission)
+// ============================================================================
+
+// Get form responses for an audition (admin only - authenticated)
+app.get('/api/auditions/:id/form-responses', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clubId = getClubId(req);
+    
+    // Verify audition
+    const auditionDoc = await db.collection('auditions').doc(id).get();
+    if (auditionDoc.exists) {
+      const auditionData = auditionDoc.data();
+      if (auditionData.clubId && auditionData.clubId !== clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+    
+    const responsesSnapshot = await db.collection('form_responses')
+      .where('auditionId', '==', id)
+      .orderBy('submittedAt', 'desc')
+      .get();
+    
+    const responses = responsesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json(responses);
+  } catch (error) {
+    console.error('Error fetching form responses:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get form response by dancer ID (admin only)
+app.get('/api/dancers/:dancerId/form-response', authenticateToken, async (req, res) => {
+  try {
+    const { dancerId } = req.params;
+    const clubId = getClubId(req);
+    
+    const responseSnapshot = await db.collection('form_responses')
+      .where('dancerId', '==', dancerId)
+      .where('clubId', '==', clubId)
+      .limit(1)
+      .get();
+    
+    if (responseSnapshot.empty) {
+      return res.status(404).json({ error: 'Form response not found' });
+    }
+    
+    const response = {
+      id: responseSnapshot.docs[0].id,
+      ...responseSnapshot.docs[0].data()
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching form response:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
