@@ -2931,15 +2931,23 @@ app.get('/api/auditions/:id/form-questions', async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Fetch questions - don't use orderBy if we might not have an index
+    // We'll sort in memory instead
     const questionsSnapshot = await db.collection('form_questions')
       .where('auditionId', '==', id)
-      .orderBy('order', 'asc')
       .get();
     
     const questions = questionsSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+    
+    // Sort by order in memory (fallback if index not available)
+    questions.sort((a, b) => {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      return orderA - orderB;
+    });
     
     res.json(questions);
   } catch (error) {
@@ -2963,15 +2971,23 @@ app.get('/api/auditions/:id/form-questions/admin', authenticateToken, async (req
       }
     }
     
+    // Fetch questions - don't use orderBy if we might not have an index
+    // We'll sort in memory instead
     const questionsSnapshot = await db.collection('form_questions')
       .where('auditionId', '==', id)
-      .orderBy('order', 'asc')
       .get();
     
     const questions = questionsSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+    
+    // Sort by order in memory (fallback if index not available)
+    questions.sort((a, b) => {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      return orderA - orderB;
+    });
     
     res.json(questions);
   } catch (error) {
