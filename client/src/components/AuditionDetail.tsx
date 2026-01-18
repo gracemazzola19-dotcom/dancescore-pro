@@ -107,6 +107,8 @@ const AuditionDetail: React.FC = () => {
     }
     if (activeTab === 'responses') {
       fetchFormResponses();
+      // Also fetch questions to display question text in responses
+      fetchFormQuestions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, showFormQuestions, activeTab]);
