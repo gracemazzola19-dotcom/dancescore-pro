@@ -131,9 +131,12 @@ const AuditionDetail: React.FC = () => {
     if (!id) return;
     try {
       const response = await api.get(`/api/auditions/${id}/form-questions/admin`);
-      setFormQuestions(response.data || []);
+      const questions = response.data || [];
+      console.log('Fetched form questions:', questions.length, questions);
+      setFormQuestions(questions);
     } catch (error) {
       console.error('Error fetching form questions:', error);
+      toast.error('Failed to load form questions');
     }
   };
 
@@ -188,11 +191,12 @@ const AuditionDetail: React.FC = () => {
           formData.append('image', questionImageFile);
         }
         
-        await api.post(`/api/auditions/${id}/form-questions`, formData, {
+        const response = await api.post(`/api/auditions/${id}/form-questions`, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           }
         });
+        console.log('Question update response:', response.data);
         toast.success('Question updated successfully');
       } else {
         // Create new question
@@ -200,21 +204,25 @@ const AuditionDetail: React.FC = () => {
           formData.append('image', questionImageFile);
         }
         
-        await api.post(`/api/auditions/${id}/form-questions`, formData, {
+        const response = await api.post(`/api/auditions/${id}/form-questions`, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           }
         });
+        console.log('Question create response:', response.data);
         toast.success('Question added successfully');
       }
       
-      // Reset form
+      // Fetch questions first to ensure we have the latest data
+      await fetchFormQuestions();
+      
+      // Reset form after successful fetch
       setEditingQuestion(null);
       setQuestionForm({ text: '', type: 'text', required: false, options: '' });
       setQuestionImageFile(null);
-      fetchFormQuestions();
     } catch (error: any) {
       console.error('Error saving question:', error);
+      console.error('Error details:', error.response?.data);
       toast.error(error.response?.data?.error || 'Failed to save question');
     }
   };
@@ -923,6 +931,18 @@ const AuditionDetail: React.FC = () => {
                             )}
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Add New Question Button - Always visible when not editing */}
+                    {!editingQuestion && formQuestions.length > 0 && (
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <button
+                          onClick={handleAddQuestion}
+                          className="add-dancer-button"
+                        >
+                          + Add New Question
+                        </button>
                       </div>
                     )}
 

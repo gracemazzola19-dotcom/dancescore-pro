@@ -2987,6 +2987,15 @@ app.post('/api/auditions/:id/form-questions', authenticateToken, questionImageUp
     const clubId = getClubId(req);
     const { questionId, text, type, required, order, options } = req.body;
     
+    console.log('📝 Form question save request:', {
+      auditionId: id,
+      questionId: questionId || 'new',
+      text: text?.substring(0, 50) || 'missing',
+      type: type || 'missing',
+      required: required,
+      order: order
+    });
+    
     // Verify audition belongs to user's club
     const auditionDoc = await db.collection('auditions').doc(id).get();
     if (!auditionDoc.exists) {
@@ -3029,11 +3038,13 @@ app.post('/api/auditions/:id/form-questions', authenticateToken, questionImageUp
     if (questionId) {
       // Update existing question
       await db.collection('form_questions').doc(questionId).update(questionData);
+      console.log(`   ✅ Question updated: ${questionId}`);
       res.json({ id: questionId, ...questionData, message: 'Question updated successfully' });
     } else {
       // Create new question
       questionData.createdAt = new Date().toISOString();
       const docRef = await db.collection('form_questions').add(questionData);
+      console.log(`   ✅ Question created: ${docRef.id} for audition ${id}`);
       res.json({ id: docRef.id, ...questionData, message: 'Question created successfully' });
     }
   } catch (error) {
