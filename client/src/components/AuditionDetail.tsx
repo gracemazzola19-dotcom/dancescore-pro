@@ -67,7 +67,11 @@ const AuditionDetail: React.FC = () => {
   const [expandedDancer, setExpandedDancer] = useState<string | null>(null);
   const [showQRCode, setShowQRCode] = useState(false);
   const [expandedAnalytics, setExpandedAnalytics] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<'dancers' | 'videos'>('dancers');
+  const [activeTab, setActiveTab] = useState<'dancers' | 'videos' | 'responses'>('dancers');
+  
+  // Form responses state
+  const [formResponses, setFormResponses] = useState<any[]>([]);
+  const [loadingResponses, setLoadingResponses] = useState(false);
   
   // Form questions management
   const [showFormQuestions, setShowFormQuestions] = useState(false);
@@ -101,8 +105,11 @@ const AuditionDetail: React.FC = () => {
     if (showFormQuestions) {
       fetchFormQuestions();
     }
+    if (activeTab === 'responses') {
+      fetchFormResponses();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, showFormQuestions]);
+  }, [id, showFormQuestions, activeTab]);
 
   const fetchAuditionDetails = async () => {
     try {
@@ -137,6 +144,22 @@ const AuditionDetail: React.FC = () => {
     } catch (error) {
       console.error('Error fetching form questions:', error);
       toast.error('Failed to load form questions');
+    }
+  };
+
+  const fetchFormResponses = async () => {
+    if (!id) return;
+    try {
+      setLoadingResponses(true);
+      const response = await api.get(`/api/auditions/${id}/form-responses`);
+      const responses = response.data || [];
+      console.log('Fetched form responses:', responses.length);
+      setFormResponses(responses);
+    } catch (error) {
+      console.error('Error fetching form responses:', error);
+      toast.error('Failed to load form responses');
+    } finally {
+      setLoadingResponses(false);
     }
   };
 
@@ -710,13 +733,22 @@ const AuditionDetail: React.FC = () => {
           Dancers
         </button>
         {isAdmin() && (
-          <button
-            key="videos"
-            onClick={() => setActiveTab('videos')}
-            className={`tab-button ${activeTab === 'videos' ? 'active' : ''}`}
-          >
-            Videos
-          </button>
+          <>
+            <button
+              key="videos"
+              onClick={() => setActiveTab('videos')}
+              className={`tab-button ${activeTab === 'videos' ? 'active' : ''}`}
+            >
+              Videos
+            </button>
+            <button
+              key="responses"
+              onClick={() => setActiveTab('responses')}
+              className={`tab-button ${activeTab === 'responses' ? 'active' : ''}`}
+            >
+              Form Responses ({formResponses.length})
+            </button>
+          </>
         )}
       </div>
 
@@ -1840,6 +1872,128 @@ const AuditionDetail: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Form Responses Tab - Admin Only */}
+      {activeTab === 'responses' && isAdmin() && (
+        <div className="admin-section">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h2>Form Responses</h2>
+            <span style={{ fontSize: '0.9rem', color: '#666' }}>
+              {formResponses.length} {formResponses.length === 1 ? 'response' : 'responses'}
+            </span>
+          </div>
+
+          {loadingResponses ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+              Loading responses...
+            </div>
+          ) : formResponses.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', backgroundColor: '#f8f9fa', borderRadius: '0.5rem', border: '1px solid #dee2e6' }}>
+              <p style={{ margin: 0, color: '#666', fontSize: '1rem' }}>
+                No form responses yet. Responses will appear here when dancers submit the registration form.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {formResponses.map((response) => (
+                <div
+                  key={response.id}
+                  style={{
+                    padding: '1.5rem',
+                    backgroundColor: '#fff',
+                    border: '2px solid #dee2e6',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div>
+                      <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#333', fontSize: '1.2rem' }}>
+                        {response.dancerName || 'Unknown Dancer'}
+                      </h3>
+                      {response.dancerId && (
+                        <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.25rem' }}>
+                          Dancer ID: {response.dancerId}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                        Submitted: {new Date(response.submittedAt || response.proof?.timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                    {response.proof && (
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: '#d4edda',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.75rem',
+                        color: '#155724'
+                      }}>
+                        ✓ Verified
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Proof Information */}
+                  {response.proof && (
+                    <div style={{
+                      padding: '0.75rem',
+                      backgroundColor: '#f8f9fa',
+                      borderRadius: '0.5rem',
+                      marginBottom: '1rem',
+                      fontSize: '0.85rem',
+                      color: '#666'
+                    }}>
+                      <strong>Proof of Submission:</strong>
+                      <div style={{ marginTop: '0.25rem' }}>
+                        <div>Submission ID: {response.proof.submissionId || 'N/A'}</div>
+                        <div>IP Address: {response.proof.ip || response.ipAddress || 'N/A'}</div>
+                        <div>Timestamp: {new Date(response.proof.timestamp).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Responses */}
+                  {response.responses && Object.keys(response.responses).length > 0 ? (
+                    <div>
+                      <h4 style={{ marginBottom: '0.75rem', color: '#333', fontSize: '1rem' }}>Answers:</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {Object.entries(response.responses).map(([questionId, answer]) => {
+                          // Try to find question text from formQuestions, otherwise use ID
+                          const question = formQuestions.find(q => q.id === questionId);
+                          const questionText = question?.text || `Question ${questionId}`;
+                          
+                          return (
+                            <div
+                              key={questionId}
+                              style={{
+                                padding: '0.75rem',
+                                backgroundColor: '#f8f9fa',
+                                borderRadius: '0.5rem',
+                                border: '1px solid #dee2e6'
+                              }}
+                            >
+                              <div style={{ fontWeight: '600', marginBottom: '0.25rem', color: '#333', fontSize: '0.9rem' }}>
+                                {questionText}
+                              </div>
+                              <div style={{ color: '#495057', fontSize: '0.9rem' }}>
+                                {typeof answer === 'boolean' ? (answer ? 'Yes' : 'No') : String(answer || 'No answer')}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '0.75rem', backgroundColor: '#fff3cd', borderRadius: '0.5rem', color: '#856404', fontSize: '0.9rem' }}>
+                      No responses recorded for this submission.
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
