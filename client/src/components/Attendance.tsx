@@ -431,8 +431,8 @@ const Attendance: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem' }}>
-        <h2>Loading Attendance Data...</h2>
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <h2>Loading Attendance Data...</h2>
       </div>
     );
   }
@@ -597,22 +597,22 @@ const Attendance: React.FC = () => {
               </button>
               
               {editMode && (
-                <button
-                  onClick={() => handleDeleteEvent(event.id, event.name)}
-                  style={{
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    padding: '0.5rem 1rem',
-                    borderRadius: '0.25rem',
-                    cursor: 'pointer',
-                    fontSize: '0.9rem',
-                    marginTop: '0.5rem',
-                    width: '100%'
-                  }}
-                >
-                  Delete Practice
-                </button>
+              <button
+                onClick={() => handleDeleteEvent(event.id, event.name)}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  marginTop: '0.5rem',
+                  width: '100%'
+                }}
+              >
+                Delete Practice
+              </button>
               )}
             </div>
           ))}
@@ -669,21 +669,21 @@ const Attendance: React.FC = () => {
                               {formatDate(event.date)}
                             </small>
                             {editMode && (
-                              <button
-                                onClick={() => handleDeleteEvent(event.id, event.name)}
-                                style={{
-                                  backgroundColor: '#dc3545',
-                                  color: 'white',
-                                  border: 'none',
-                                  padding: '0.25rem 0.5rem',
-                                  borderRadius: '0.25rem',
-                                  cursor: 'pointer',
-                                  fontSize: '0.7rem',
-                                  marginTop: '0.25rem'
-                                }}
-                              >
-                                Delete
-                              </button>
+                            <button
+                              onClick={() => handleDeleteEvent(event.id, event.name)}
+                              style={{
+                                backgroundColor: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '0.25rem',
+                                cursor: 'pointer',
+                                fontSize: '0.7rem',
+                                marginTop: '0.25rem'
+                              }}
+                            >
+                              Delete
+                            </button>
                             )}
                           </div>
                         </th>
@@ -709,21 +709,21 @@ const Attendance: React.FC = () => {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <strong>{member.name}</strong>
                             {editMode && (
-                              <button
-                                onClick={() => handleDeleteDancer(member.id, member.name)}
-                                style={{
-                                  backgroundColor: '#dc3545',
-                                  color: 'white',
-                                  border: 'none',
-                                  padding: '0.25rem 0.5rem',
-                                  borderRadius: '0.25rem',
-                                  cursor: 'pointer',
-                                  fontSize: '0.7rem'
-                                }}
-                                title="Delete dancer"
-                              >
-                                Delete
-                              </button>
+                            <button
+                              onClick={() => handleDeleteDancer(member.id, member.name)}
+                              style={{
+                                backgroundColor: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '0.25rem',
+                                cursor: 'pointer',
+                                fontSize: '0.7rem'
+                              }}
+                              title="Delete dancer"
+                            >
+                              Delete
+                            </button>
                             )}
                           </div>
                         </td>

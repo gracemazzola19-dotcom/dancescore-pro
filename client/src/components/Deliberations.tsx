@@ -59,7 +59,7 @@ const Deliberations: React.FC = () => {
   
   // Level confirmation state
   const [confirmedDancers, setConfirmedDancers] = useState<Set<string>>(new Set());
-  
+
   // Previous season dancers state
   const [showPreviousSeason, setShowPreviousSeason] = useState(false);
   const [previousSeasonDancers, setPreviousSeasonDancers] = useState<any[]>([]);

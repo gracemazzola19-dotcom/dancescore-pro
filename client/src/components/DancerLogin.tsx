@@ -147,7 +147,7 @@ const DancerLogin: React.FC = () => {
               setUser(userData.user);
               toast.success(`Welcome ${userData.user.name}!`);
               navigate(redirectUrl);
-              return;
+          return;
         }
       } else {
         // If verification not required, proceed with normal login
@@ -165,11 +165,11 @@ const DancerLogin: React.FC = () => {
           setShowPasswordChange(true);
           setLoading(false);
         } else {
-          const userData = response.data;
-          localStorage.setItem('token', userData.token);
-          localStorage.setItem('user', JSON.stringify(userData.user));
-          setUser(userData.user);
-          toast.success(`Welcome ${userData.user.name}!`);
+        const userData = response.data;
+        localStorage.setItem('token', userData.token);
+        localStorage.setItem('user', JSON.stringify(userData.user));
+        setUser(userData.user);
+        toast.success(`Welcome ${userData.user.name}!`);
           navigate(redirectUrl);
         }
       }
@@ -207,11 +207,11 @@ const DancerLogin: React.FC = () => {
           setLoading(false);
         } else {
           // No password change required, complete login normally
-          const userData = response.data;
-          localStorage.setItem('token', userData.token);
-          localStorage.setItem('user', JSON.stringify(userData.user));
-          setUser(userData.user);
-          toast.success(`Welcome ${userData.user.name}!`);
+        const userData = response.data;
+        localStorage.setItem('token', userData.token);
+        localStorage.setItem('user', JSON.stringify(userData.user));
+        setUser(userData.user);
+        toast.success(`Welcome ${userData.user.name}!`);
           navigate(redirectUrl);
         }
       } catch (error: any) {

@@ -73,7 +73,7 @@ const JudgeDashboard: React.FC = () => {
     // Poll for active audition status changes every 10 seconds
     // This ensures judges see updates when an audition becomes inactive
     const pollInterval = setInterval(() => {
-      fetchCurrentAudition();
+    fetchCurrentAudition();
     }, 10000); // Check every 10 seconds
     
     // Cleanup preview URL and polling interval when component unmounts
@@ -297,38 +297,38 @@ const JudgeDashboard: React.FC = () => {
       } catch (batchError) {
         // Fallback to individual requests if batch endpoint fails
         console.warn('Batch submission status failed, falling back to individual requests:', batchError);
-        const statusPromises = dancers.map(async (dancer) => {
-          try {
-            const response = await api.get(`/api/scores/submission-status/${dancer.id}`);
-            return { dancerId: dancer.id, ...response.data };
-          } catch (error) {
-            console.error(`Error fetching submission status for dancer ${dancer.id}:`, error);
-            return { dancerId: dancer.id, submitted: false, hasScores: false };
-          }
-        });
+      const statusPromises = dancers.map(async (dancer) => {
+        try {
+          const response = await api.get(`/api/scores/submission-status/${dancer.id}`);
+          return { dancerId: dancer.id, ...response.data };
+        } catch (error) {
+          console.error(`Error fetching submission status for dancer ${dancer.id}:`, error);
+          return { dancerId: dancer.id, submitted: false, hasScores: false };
+        }
+      });
+      
+      const statuses = await Promise.all(statusPromises);
+      const statusMap: Record<string, { submitted: boolean; hasScores: boolean }> = {};
+      
+      statuses.forEach(status => {
+        statusMap[status.dancerId] = {
+          submitted: status.submitted,
+          hasScores: status.hasScores
+        };
         
-        const statuses = await Promise.all(statusPromises);
-        const statusMap: Record<string, { submitted: boolean; hasScores: boolean }> = {};
-        
-        statuses.forEach(status => {
-          statusMap[status.dancerId] = {
-            submitted: status.submitted,
-            hasScores: status.hasScores
-          };
-          
-          if (status.hasScores && status.scores && !scores[status.dancerId]) {
-            setScores(prev => ({
-              ...prev,
-              [status.dancerId]: {
-                dancerId: status.dancerId,
-                scores: status.scores,
-                comments: status.comments || ''
-              }
-            }));
-          }
-        });
-        
-        setSubmissionStatus(statusMap);
+        if (status.hasScores && status.scores && !scores[status.dancerId]) {
+          setScores(prev => ({
+            ...prev,
+            [status.dancerId]: {
+              dancerId: status.dancerId,
+              scores: status.scores,
+              comments: status.comments || ''
+            }
+          }));
+        }
+      });
+      
+      setSubmissionStatus(statusMap);
       }
     } catch (error) {
       console.error('Error fetching submission status:', error);
@@ -404,12 +404,12 @@ const JudgeDashboard: React.FC = () => {
       };
       
       const updatedScore: DancerScore = {
-        dancerId,
-        scores: {
-          ...existingScores,
-          [category]: value
-        },
-        comments: existingScore?.comments || ''
+          dancerId,
+          scores: {
+            ...existingScores,
+            [category]: value
+          },
+          comments: existingScore?.comments || ''
       };
       
       // Clear existing timeout for this dancer
@@ -1257,12 +1257,12 @@ const JudgeDashboard: React.FC = () => {
                         ) : submissionStatus[dancer.id]?.hasScores ? (
                           <div className="submission-status draft">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                              <div className="status-indicator" style={{ 
-                                color: '#f0ad4e', 
-                                fontWeight: '600',
-                                fontSize: '0.9rem'
-                              }}>
-                                DRAFT
+                            <div className="status-indicator" style={{ 
+                              color: '#f0ad4e', 
+                              fontWeight: '600',
+                              fontSize: '0.9rem'
+                            }}>
+                              DRAFT
                               </div>
                               {saveStatus[dancer.id] === 'saving' && (
                                 <span style={{ fontSize: '0.75rem', color: '#007bff' }}>💾 Saving...</span>
@@ -1285,12 +1285,12 @@ const JudgeDashboard: React.FC = () => {
                         ) : (
                           <div className="submission-status empty">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                              <div className="status-indicator" style={{ 
-                                color: '#6c757d', 
-                                fontWeight: '600',
-                                fontSize: '0.9rem'
-                              }}>
-                                NOT SCORED
+                            <div className="status-indicator" style={{ 
+                              color: '#6c757d', 
+                              fontWeight: '600',
+                              fontSize: '0.9rem'
+                            }}>
+                              NOT SCORED
                               </div>
                               {saveStatus[dancer.id] === 'saving' && (
                                 <span style={{ fontSize: '0.75rem', color: '#007bff' }}>💾 Saving...</span>

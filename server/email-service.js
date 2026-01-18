@@ -32,16 +32,16 @@ function initializeEmailService() {
     // Configure transporter with timeout settings
     // Using direct SMTP configuration for better timeout control
     const port = parseInt(smtpPort);
-    transporter = nodemailer.createTransport({
-      host: smtpHost,
+      transporter = nodemailer.createTransport({
+        host: smtpHost,
       port: port,
       secure: port === 465, // true for 465, false for other ports (like 587)
-      auth: {
-        user: smtpUser,
+        auth: {
+          user: smtpUser,
         pass: smtpHost === 'smtp.gmail.com' ? smtpPassword.replace(/\s/g, '') : smtpPassword, // Remove spaces from Gmail app password
-      },
+        },
       ...timeoutOptions,
-    });
+      });
 
     console.log('✅ Email service initialized successfully');
     return true;

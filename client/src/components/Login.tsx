@@ -140,12 +140,15 @@ const Login: React.FC = () => {
           setShowPasswordChange(true);
           setLoading(false);
         } else {
-          await completeLogin(loginResponse.data);
+        await completeLogin(loginResponse.data);
         }
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      const errorMsg = error.response?.data?.error || 'Login failed. Please check your credentials.';
+      console.error('Error response:', error.response);
+      console.error('Error response data:', error.response?.data);
+      const errorMsg = error.response?.data?.error || error.message || 'Login failed. Please check your credentials.';
+      console.error('Error message extracted:', errorMsg);
       toast.error(errorMsg);
       setLoading(false);
     }
@@ -177,7 +180,7 @@ const Login: React.FC = () => {
           setLoading(false);
         } else {
           // No password change required, complete login normally
-          await completeLogin(loginResponse.data);
+        await completeLogin(loginResponse.data);
         }
       } catch (error: any) {
         console.error('Login completion error:', error);
@@ -238,7 +241,7 @@ const Login: React.FC = () => {
                           user?.role === 'admin' || 
                           user?.role === 'secretary';
     
-    localStorage.setItem('token', userData.token);
+      localStorage.setItem('token', userData.token);
     localStorage.setItem('user', JSON.stringify(user));
     setUser(user);
     

@@ -3658,6 +3658,12 @@ app.post('/api/auth/login', async (req, res) => {
     
     console.log('Login attempt:', { email, selectedRole });
     
+    // Check if database is initialized
+    if (!db || !db.collection) {
+      console.error('Database not initialized!', { db: typeof db, hasCollection: db && typeof db.collection });
+      return res.status(500).json({ error: 'Database connection not available. Please check server configuration.' });
+    }
+    
     // Find judge by email in the judges collection
     const judgesSnapshot = await db.collection('judges')
       .where('email', '==', email)
@@ -3750,9 +3756,26 @@ app.post('/api/auth/login', async (req, res) => {
     console.error('Error details:', {
       message: error.message,
       code: error.code,
-      name: error.name
+      name: error.name,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
     });
-    const errorMessage = error.message || error.toString() || 'An unexpected error occurred during login';
+    
+    // Better error message handling
+    let errorMessage = 'An unexpected error occurred during login';
+    if (error && typeof error === 'object') {
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.code) {
+        errorMessage = `Database error: ${error.code}`;
+      } else {
+        errorMessage = JSON.stringify(error);
+      }
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else {
+      errorMessage = String(error);
+    }
+    
     res.status(500).json({ error: errorMessage });
   }
 });

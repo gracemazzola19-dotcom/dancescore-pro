@@ -729,12 +729,12 @@ const AdminDashboard: React.FC = () => {
               ← Dashboard
             </button>
           )}
-          <div>
+        <div>
             <h1 className="dashboard-title" style={{ margin: 0, fontSize: '1.8rem', fontWeight: '700', color: '#8B6FA8' }}>Admin Dashboard</h1>
             <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.25rem', margin: 0 }}>
-              Full access for Admins and Secretaries
-            </p>
-          </div>
+            Full access for Admins and Secretaries
+          </p>
+        </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button 
@@ -761,11 +761,11 @@ const AdminDashboard: React.FC = () => {
             <div style={{ width: '24px', height: '3px', backgroundColor: '#8B6FA8', borderRadius: '2px' }}></div>
             <div style={{ width: '24px', height: '3px', backgroundColor: '#8B6FA8', borderRadius: '2px' }}></div>
           </button>
-          <button className="logout-button" onClick={logout}>
-            Logout
-          </button>
-        </div>
-        
+        <button className="logout-button" onClick={logout}>
+          Logout
+        </button>
+      </div>
+      
         {/* Settings Menu Dropdown */}
         {settingsMenuOpen && (
           <div style={{
@@ -781,7 +781,7 @@ const AdminDashboard: React.FC = () => {
             marginTop: '0.5rem',
             overflow: 'hidden'
           }}>
-            <button
+          <button
               onClick={() => {
                 setActiveTab('settings');
                 setSettingsMenuOpen(false);
@@ -806,19 +806,19 @@ const AdminDashboard: React.FC = () => {
               }}
             >
               Settings
-            </button>
+          </button>
           </div>
         )}
       </div>
       
       {/* Widget-based Home Screen */}
-      {activeTab === 'overview' && (
+          {activeTab === 'overview' && (
         <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
             {/* Auditions Widget */}
             <div
               onClick={() => setActiveTab('auditions')}
-              style={{
+                  style={{ 
                 backgroundColor: '#fff',
                 borderRadius: '16px',
                 padding: '1.5rem',
@@ -840,10 +840,10 @@ const AdminDashboard: React.FC = () => {
             >
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Auditions</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
-                {auditions.length}
-              </div>
+                    {auditions.length}
+                  </div>
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage audition events</p>
-            </div>
+                </div>
 
             {/* Judges Widget */}
             <div
@@ -870,10 +870,10 @@ const AdminDashboard: React.FC = () => {
             >
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem', fontWeight: '700', color: '#8B6FA8' }}>Judges</h3>
               <div style={{ fontSize: '2rem', fontWeight: '700', color: '#B380FF', marginBottom: '0.5rem' }}>
-                {judges.filter(j => j.active).length}
-              </div>
+                    {judges.filter(j => j.active).length}
+                  </div>
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Active judges: {judges.filter(j => j.active).length}</p>
-            </div>
+                </div>
 
             {/* Dancers Widget */}
             <div
@@ -1024,9 +1024,9 @@ const AdminDashboard: React.FC = () => {
               </div>
               <p style={{ margin: 0, fontSize: '0.9rem', color: '#666' }}>Manage files and archives</p>
             </div>
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          )}
       
       <div className="dashboard-content">
         <div className="admin-dashboard">
@@ -1191,18 +1191,18 @@ const AdminDashboard: React.FC = () => {
                                 </button>
                               )}
               <select
-                value={audition.status}
-                onChange={(e) => handleAuditionStatusChange(audition.id, e.target.value as any)}
-                style={{
-                  padding: '0.5rem',
-                  borderRadius: '0.25rem',
-                  border: '1px solid #ced4da',
-                  fontSize: '0.9rem'
-                }}
-              >
-                <option value="draft">Draft</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
+                                value={audition.status}
+                                onChange={(e) => handleAuditionStatusChange(audition.id, e.target.value as any)}
+                                style={{
+                                  padding: '0.5rem',
+                                  borderRadius: '0.25rem',
+                                  border: '1px solid #ced4da',
+                                  fontSize: '0.9rem'
+                                }}
+                              >
+                                <option value="draft">Draft</option>
+                                <option value="active">Active</option>
+                                <option value="completed">Completed</option>
                 <option value="archived">Archive (Exports & Stores)</option>
               </select>
                               <button
@@ -1592,7 +1592,7 @@ const AdminDashboard: React.FC = () => {
           {activeTab === 'files' && (
             <FileManager />
           )}
-          
+
           {/* Make-Up Submissions Tab */}
           {activeTab === 'makeUpSubmissions' && (
             <div className="admin-section">

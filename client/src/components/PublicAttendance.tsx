@@ -33,9 +33,9 @@ const PublicAttendance: React.FC = () => {
         return;
       }
       // User is logged in as dancer, fetch event
-      if (eventId) {
-        fetchEvent();
-      }
+    if (eventId) {
+      fetchEvent();
+    }
     }
   }, [authLoading, user, eventId, navigate]);
 

@@ -736,13 +736,13 @@ const AuditionDetail: React.FC = () => {
         </button>
         {isAdmin() && (
           <>
-            <button
-              key="videos"
-              onClick={() => setActiveTab('videos')}
-              className={`tab-button ${activeTab === 'videos' ? 'active' : ''}`}
-            >
-              Videos
-            </button>
+          <button
+            key="videos"
+            onClick={() => setActiveTab('videos')}
+            className={`tab-button ${activeTab === 'videos' ? 'active' : ''}`}
+          >
+            Videos
+          </button>
             <button
               key="responses"
               onClick={() => setActiveTab('responses')}

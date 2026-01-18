@@ -118,7 +118,7 @@ const RecordingView: React.FC = () => {
     if (!file.type.startsWith('video/')) {
       toast.error('Please select a video file');
       return;
-    }
+        }
 
     // Validate file size (500MB limit)
     const maxSize = 500 * 1024 * 1024; // 500MB
@@ -344,62 +344,62 @@ const RecordingView: React.FC = () => {
                       borderRadius: '0.5rem',
                       overflow: 'hidden',
                       aspectRatio: '16/9'
-                    }}>
+              }}>
                       {videoPreviewUrl && (
-                        <video
+                <video
                           ref={videoPreviewRef}
                           src={videoPreviewUrl}
                           controls
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'contain'
-                          }}
-                        />
-                      )}
-                    </div>
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain'
+                  }}
+                />
+                )}
+              </div>
                     <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6c757d' }}>
                       <p><strong>File:</strong> {selectedVideo.name}</p>
                       <p><strong>Size:</strong> {(selectedVideo.size / (1024 * 1024)).toFixed(2)} MB</p>
                       <p><strong>Type:</strong> {selectedVideo.type}</p>
-                    </div>
+            </div>
                     <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                      <button
+                <button
                         onClick={() => uploadVideo()}
-                        disabled={uploading || !currentGroup}
-                        style={{
-                          padding: '1rem 2rem',
-                          fontSize: '1.2rem',
+                    disabled={uploading || !currentGroup}
+                    style={{
+                      padding: '1rem 2rem',
+                      fontSize: '1.2rem',
                           backgroundColor: currentGroup && !uploading ? '#28a745' : '#6c757d',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '0.5rem',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
                           cursor: currentGroup && !uploading ? 'pointer' : 'not-allowed',
-                          fontWeight: '600',
+                      fontWeight: '600',
                           opacity: currentGroup && !uploading ? 1 : 0.6
-                        }}
-                      >
-                        {uploading ? 'Uploading...' : 'Upload Video'}
-                      </button>
-                      <button
-                        onClick={handleCancel}
-                        disabled={uploading}
-                        style={{
-                          padding: '1rem 2rem',
-                          fontSize: '1.2rem',
-                          backgroundColor: '#6c757d',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '0.5rem',
-                          cursor: uploading ? 'not-allowed' : 'pointer',
-                          fontWeight: '600'
-                        }}
-                      >
-                        Cancel
-                      </button>
+                    }}
+                  >
+                    {uploading ? 'Uploading...' : 'Upload Video'}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={uploading}
+                    style={{
+                      padding: '1rem 2rem',
+                      fontSize: '1.2rem',
+                      backgroundColor: '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: uploading ? 'not-allowed' : 'pointer',
+                      fontWeight: '600'
+                    }}
+                  >
+                    Cancel
+                  </button>
                     </div>
                   </div>
-                )}
+              )}
               </div>
             </div>
 
